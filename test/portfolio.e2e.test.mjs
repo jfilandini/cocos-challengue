@@ -40,3 +40,21 @@ test('invalid ids return 400 and unknown users return 404', async () => {
   }
   assert.equal((await fetch(`${baseUrl}/users/2147483647/portfolio`)).status, 404);
 });
+
+test('account-number lookup returns the same portfolio as user-id lookup', async () => {
+  for (const [accountNumber, userId] of [['10001', 1], ['10002', 2]]) {
+    const response = await fetch(`${baseUrl}/accounts/${accountNumber}/portfolio`);
+    assert.equal(response.status, 200);
+    const byUser = await fetch(`${baseUrl}/users/${userId}/portfolio`);
+    assert.deepEqual(await response.json(), await byUser.json());
+  }
+});
+
+test('account numbers are exact strings; unknown accounts return 404 and invalid input returns 400', async () => {
+  for (const account of ['100', '010001', "' OR 1=1 --"]) {
+    assert.equal((await fetch(`${baseUrl}/accounts/${encodeURIComponent(account)}/portfolio`)).status, 404);
+  }
+  for (const account of [' ', 'a'.repeat(21)]) {
+    assert.equal((await fetch(`${baseUrl}/accounts/${encodeURIComponent(account)}/portfolio`)).status, 400);
+  }
+});

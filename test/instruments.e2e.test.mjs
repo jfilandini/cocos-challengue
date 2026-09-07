@@ -41,10 +41,11 @@ test('combines ticker and name matches without duplicate instruments', async () 
   assert.deepEqual(results.map(({ ticker }) => ticker), ['PAMP']);
 });
 
-test('returns an empty list for absent matches and excludes cash', async () => {
+test('returns an empty list for absent matches and finds currencies by ticker or name', async () => {
   assert.deepEqual(await search('no-such-instrument'), []);
-  assert.deepEqual(await search('PESOS'), []);
-  assert.ok((await search('ARS')).every(({ ticker }) => ticker !== 'ARS'));
+  const cash = { id: 66, ticker: 'ARS', name: 'PESOS', type: 'MONEDA' };
+  assert.deepEqual(await search('pesos'), [cash]);
+  assert.deepEqual(await search('ars'), [cash]);
 });
 
 test('treats SQL pattern characters and quotes as literal input', async () => {

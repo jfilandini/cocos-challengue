@@ -64,7 +64,7 @@ curl 'http://localhost:3000/instruments?query=molinos'
 Usar el puerto configurado en `API_PORT` (3001 si se eligió ese valor).
 El parámetro `query` es obligatorio: entre 1 y 255 caracteres luego de quitar espacios al inicio y al final. Busca coincidencias parciales por ticker **o** nombre, sin distinguir mayúsculas y minúsculas. Los acentos se conservan y los caracteres `%`, `_` y `\` se buscan literalmente.
 
-La respuesta es un array de objetos `{ id, ticker, name, type }` ordenados por ticker. Solo incluye instrumentos de tipo `ACCIONES`; ARS es saldo de efectivo y queda excluido. Si no hay coincidencias, devuelve `[]`. Una búsqueda ausente, vacía o inválida devuelve HTTP 400.
+La respuesta es un array de objetos `{ id, ticker, name, type }` ordenados por ticker. Incluye acciones y monedas: ARS puede encontrarse por ticker (`ars`) o nombre (`pesos`). Si no hay coincidencias, devuelve `[]`. Una búsqueda ausente, vacía o inválida devuelve HTTP 400.
 
 Las pruebas funcionales usan la base con el SQL original y no modifican datos:
 
@@ -112,6 +112,10 @@ La prueba funcional de envío de órdenes se incorporará junto con ese endpoint
 La auditoría inicial de npm informa cuatro entradas de severidad alta asociadas a la CLI de Prisma 7.10.0 (`prisma`, `@prisma/config`, `deepmerge-ts` y `mysql2`). Queda pendiente resolverlas con una actualización compatible; no se aplicó el downgrade mayor sugerido por `npm audit fix --force`. La poda de npm conserva la CLI por el árbol de dependencias actual, por lo que los avisos también aparecen con `--omit=dev` y la CLI sigue presente en la imagen.
 
 ## Portfolio
+
+También se puede consultar mediante `GET /accounts/:accountNumber/portfolio`, por ejemplo `/accounts/10001/portfolio`. Devuelve el mismo contrato que la búsqueda por usuario, incluido el `userId` resuelto. `findByAccountNumber` usa igualdad exacta y mantiene los ceros iniciales; solo quita espacios al inicio y al final. Acepta de 1 a 20 caracteres, acorde con la columna original.
+
+La resolución de la cuenta y la lectura del portfolio comparten la misma transacción. Una cuenta inexistente devuelve 404, una entrada inválida 400 y números de cuenta duplicados 409. El SQL original no garantiza unicidad: se detecta la ambigüedad sin elegir arbitrariamente un usuario ni modificar el esquema.
 
 ```sh
 curl 'http://localhost:3001/users/1/portfolio'

@@ -1,5 +1,8 @@
 import Decimal from 'decimal.js';
 import { OrderSide } from '../../shared/domain/order-side';
+import { OrderStatus } from '../../shared/domain/order-status';
+import { OrderType } from '../../shared/domain/order-type';
+import { Currency } from '../../shared/domain/currency';
 
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 
@@ -8,8 +11,8 @@ export interface PortfolioMovement {
   size: number;
   price: string;
   side: OrderSide;
-  status: 'FILLED' | 'NEW';
-  type: string;
+  status: OrderStatus.FILLED | OrderStatus.NEW;
+  type: OrderType;
 }
 
 export interface PortfolioInstrument {
@@ -22,7 +25,6 @@ export interface PortfolioInstrument {
 }
 
 export interface PortfolioSnapshot {
-  // Movements are ordered chronologically, with id as a stable tie-breaker.
   movements: PortfolioMovement[];
   instruments: PortfolioInstrument[];
 }
@@ -41,8 +43,8 @@ export function calculatePortfolio(userId: number, snapshot: PortfolioSnapshot) 
       throw new PortfolioDataError('Invalid movement quantity or price');
     }
     const value = new Amount(order.price).mul(order.size);
-    if (order.status === 'NEW') {
-      if (order.type !== 'LIMIT' || ![OrderSide.BUY, OrderSide.SELL].includes(order.side)) {
+    if (order.status === OrderStatus.NEW) {
+      if (order.type !== OrderType.LIMIT || ![OrderSide.BUY, OrderSide.SELL].includes(order.side)) {
         throw new PortfolioDataError('Invalid pending order');
       }
       if (order.side === OrderSide.BUY) reservedCash = reservedCash.plus(value);
@@ -104,7 +106,7 @@ export function calculatePortfolio(userId: number, snapshot: PortfolioSnapshot) 
 
   return {
     userId,
-    currency: 'ARS',
+    currency: Currency.ARS,
     totalValue: total.toFixed(2),
     cashBalance: cash.toFixed(2),
     reservedCash: reservedCash.toFixed(2),
