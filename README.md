@@ -1,7 +1,7 @@
 # Cocos Challenge Backend
 
 Base inicial con Node.js 24, TypeScript, NestJS 11, Prisma 7 y PostgreSQL 17.
-Incluye conexión a la base y `GET /health`. Los endpoints del challenge se implementarán en la siguiente etapa.
+Incluye conexión a la base, `GET /health` y búsqueda de activos con `GET /instruments`.
 
 ## Ejecutar con Docker
 
@@ -54,10 +54,45 @@ npm run build
 npm run prisma:studio
 ```
 
+## Buscar activos
+
+```sh
+curl 'http://localhost:3000/instruments?query=ypf'
+curl 'http://localhost:3000/instruments?query=molinos'
+```
+
+Usar el puerto configurado en `API_PORT` (3001 si se eligió ese valor).
+El parámetro `query` es obligatorio: entre 1 y 255 caracteres luego de quitar espacios al inicio y al final. Busca coincidencias parciales por ticker **o** nombre, sin distinguir mayúsculas y minúsculas. Los acentos se conservan y los caracteres `%`, `_` y `\` se buscan literalmente.
+
+La respuesta es un array de objetos `{ id, ticker, name, type }` ordenados por ticker. Solo incluye instrumentos de tipo `ACCIONES`; ARS es saldo de efectivo y queda excluido. Si no hay coincidencias, devuelve `[]`. Una búsqueda ausente, vacía o inválida devuelve HTTP 400.
+
+Las pruebas funcionales usan la base con el SQL original y no modifican datos:
+
+```sh
+docker compose up -d db --wait
+npm run test:instruments
+```
+
 ## Estructura y decisiones
 
-- `src/database`: proveedor Prisma compartido, con conexión al iniciar y desconexión al cerrar.
-- `src/health.controller.ts`: consulta `SELECT 1` mediante Prisma; responde 503 si la base no está disponible.
+La aplicación usa arquitectura hexagonal organizada por funcionalidad. El dominio y los casos de uso no importan NestJS, Prisma ni componentes de infraestructura.
+
+```text
+src/instruments/
+  domain/instrument.ts                         Modelo independiente de Prisma
+  application/search-instruments.use-case.ts   Caso de uso y validación
+  application/ports/instrument.repository.ts   Puerto de salida
+  infrastructure/http/                        Adaptador de entrada HTTP
+  infrastructure/persistence/                 Adaptador de salida Prisma
+  instruments.module.ts                       Composición e inyección de dependencias
+```
+
+El controlador invoca el caso de uso y convierte errores de entrada en HTTP 400. El caso de uso depende del contrato `InstrumentRepository`; el módulo NestJS lo conecta con `PrismaInstrumentRepository` mediante una fábrica. El adaptador Prisma implementa la búsqueda y el escape de patrones SQL, devolviendo modelos propios. La misma operación puede invocarse desde otro adaptador sin depender de HTTP.
+
+`npm run test:unit` prueba el caso de uso con un doble de prueba del repositorio, sin iniciar NestJS ni PostgreSQL. `npm run test:instruments` ejecuta esas pruebas y las funcionales con la base del challenge.
+
+- `src/shared/infrastructure/database`: proveedor Prisma compartido, con conexión al iniciar y desconexión al cerrar.
+- `src/shared/infrastructure/http/health.controller.ts`: consulta `SELECT 1` mediante Prisma; responde 503 si la base no está disponible. Es una comprobación de infraestructura, sin lógica de negocio.
 - `prisma/schema.prisma`: mapeo de las cuatro tablas originales, conservando nulabilidad y precisión decimal.
 - `prisma.config.ts`: configuración de conexión para la CLI de Prisma.
 - `docker/postgres/database.sql`: contenido original entregado para el challenge, sin modificar.

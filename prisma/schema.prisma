@@ -8,7 +8,6 @@ datasource db {
   provider = "postgresql"
 }
 
-// PostgreSQL normaliza a minúsculas los nombres sin comillas del SQL original.
 model User {
   id            Int     @id @default(autoincrement())
   email         String? @db.VarChar(255)

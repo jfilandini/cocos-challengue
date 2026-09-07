@@ -8,6 +8,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "test:unit": "npm run build && node --test test/*.unit.test.mjs",
+    "test:instruments": "npm run build && node --env-file-if-exists=.env --test test/*.test.mjs",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/main.js",
     "start:dev": "node --env-file-if-exists=.env --watch dist/main.js",
