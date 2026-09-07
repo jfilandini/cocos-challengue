@@ -1,0 +1,42 @@
+import 'reflect-metadata';
+import assert from 'node:assert/strict';
+import { after, before, test } from 'node:test';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../dist/app.module.js';
+
+let app;
+let baseUrl;
+before(async () => {
+  app = await NestFactory.create(AppModule, { logger: false });
+  await app.listen(0, '127.0.0.1');
+  baseUrl = await app.getUrl();
+});
+after(async () => { await app?.close(); });
+
+test('seed portfolio includes filled LIMITs, ignores rejected/cancelled orders and uses latest quotes', async () => {
+  const response = await fetch(`${baseUrl}/users/1/portfolio`);
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.totalValue, '889756.00');
+  assert.equal(result.cashBalance, '753000.00');
+  assert.equal(result.reservedCash, '125500.00');
+  assert.equal(result.availableCash, '627500.00');
+  assert.deepEqual(result.positions.map(p => [p.ticker, p.quantity, p.marketValue, p.totalReturnPercent]), [
+    ['BMA', -10, '-15028.00', null], ['METR', 500, '114750.00', '-8.20'], ['PAMP', 40, '37034.00', '-0.45'],
+  ]);
+  assert.ok(result.positions.every(p => p.priceDate === '2023-07-14'));
+  assert.equal(result.positions[0].inconsistentHistory, true);
+});
+
+test('existing user without movements has an empty portfolio', async () => {
+  const response = await fetch(`${baseUrl}/users/2/portfolio`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { userId: 2, currency: 'ARS', totalValue: '0.00', cashBalance: '0.00', reservedCash: '0.00', availableCash: '0.00', positions: [] });
+});
+
+test('invalid ids return 400 and unknown users return 404', async () => {
+  for (const id of ['0', '-1', '1.5', 'abc', '2147483648']) {
+    assert.equal((await fetch(`${baseUrl}/users/${id}/portfolio`)).status, 400);
+  }
+  assert.equal((await fetch(`${baseUrl}/users/2147483647/portfolio`)).status, 404);
+});

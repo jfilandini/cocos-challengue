@@ -9,7 +9,9 @@
   },
   "scripts": {
     "test:unit": "npm run build && node --test test/*.unit.test.mjs",
-    "test:instruments": "npm run build && node --env-file-if-exists=.env --test test/*.test.mjs",
+    "test": "npm run build && node --env-file-if-exists=.env --test test/*.test.mjs",
+    "test:instruments": "npm run build && node --env-file-if-exists=.env --test test/instruments.e2e.test.mjs test/search-instruments.unit.test.mjs",
+    "test:portfolio": "npm run build && node --env-file-if-exists=.env --test test/portfolio.*.test.mjs",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/main.js",
     "start:dev": "node --env-file-if-exists=.env --watch dist/main.js",
@@ -25,6 +27,7 @@
     "@nestjs/platform-express": "^11.2.3",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "decimal.js": "^10.6.0",
     "dotenv": "^17.4.2",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
