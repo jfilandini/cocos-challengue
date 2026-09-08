@@ -1,0 +1,65 @@
+@baseUrl = http://localhost:3001
+@userId = 1
+
+### Portfolio antes de operar
+GET {{baseUrl}}/users/{{userId}}/portfolio
+
+### Compra MARKET por cantidad (modifica el saldo)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 47,
+  "side": "BUY",
+  "type": "MARKET",
+  "size": 2
+}
+
+### Compra LIMIT por monto (reserva pesos)
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 47,
+  "side": "BUY",
+  "type": "LIMIT",
+  "price": "900.00",
+  "amount": "2000.00"
+}
+
+### Venta MARKET
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 47,
+  "side": "SELL",
+  "type": "MARKET",
+  "size": 1
+}
+
+### Ingreso de pesos
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 66,
+  "side": "CASH_IN",
+  "type": "MARKET",
+  "amount": "1000.00"
+}
+
+### Retiro de pesos
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 66,
+  "side": "CASH_OUT",
+  "type": "MARKET",
+  "size": 500
+}
+
+### Cancelar una orden NEW propia (reemplazar orderId por el id devuelto al crearla)
+@orderId = 0
+POST {{baseUrl}}/users/{{userId}}/orders/{{orderId}}/cancel
