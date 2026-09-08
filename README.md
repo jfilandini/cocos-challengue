@@ -119,7 +119,7 @@ En esta etapa el esquema se inicializa mediante el SQL original. No se ejecuta `
 
 El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
 
-La prueba funcional de envío de órdenes se incorporará junto con ese endpoint.
+La prueba funcional de envío de órdenes está en `test/orders.e2e.test.mjs` y usa una base de pruebas aislada.
 
 ## Dependencias
 
@@ -153,3 +153,102 @@ El usuario 1 del SQL original tiene `cashBalance = "753000.00"`, `reservedCash =
 La funcionalidad sigue la misma arquitectura hexagonal: cálculo en `portfolio/domain`, caso de uso y puerto en `portfolio/application`, HTTP y Prisma en `portfolio/infrastructure`. El dominio no importa NestJS ni Prisma.
 
 La lista `positions` incluye ARS con `type: MONEDA` cuando hay saldo de efectivo o reservas. Usa el identificador real del instrumento, `price: "1.00"`, `marketValue = cashBalance`, `quantity = cashBalance`, `reservedQuantity = reservedCash` y `availableQuantity = availableCash`. Sus rendimientos y `priceDate` son `null`: no requiere cotización. Las posiciones de acciones llevan `type: ACCIONES`. Un portfolio sin efectivo, reservas ni acciones sigue devolviendo `positions: []`.
+
+
+## Enviar órdenes
+
+`POST /users/:userId/orders` acepta:
+
+```json
+{
+  "instrumentId": 47,
+  "side": "BUY",
+  "type": "MARKET",
+  "size": 2
+}
+```
+
+- `side`: `BUY`, `SELL`, `CASH_IN` o `CASH_OUT`. BUY/SELL requiere `ACCIONES`; CASH_IN/CASH_OUT requiere el instrumento `ARS` de tipo `MONEDA`.
+- Enviar exactamente uno de `size` (entero positivo) o `amount` (pesos positivos). Los importes aceptan números o strings decimales, preferentemente strings para conservar precisión; máximo dos decimales.
+- MARKET no acepta `price`: utiliza el `close` de la última fecha disponible y se guarda `FILLED` si hay recursos.
+- LIMIT requiere `price` positivo, hasta `99999999.99` por la precisión del esquema, y se guarda `NEW`. No se ejecuta automáticamente aunque su precio cruce el cierre, porque no simulamos mercado.
+- Por monto, `size = floor(amount / precio)`, tanto para compra como para venta. En compras se verifica tanto el monto solicitado como el costo de las acciones calculadas contra el saldo disponible. Si `amount` supera el disponible, se guarda REJECTED aunque el redondeo hacia abajo produzca un costo menor; en ventas se comprueba la cantidad calculada contra las acciones disponibles. Un monto que no alcanza para una acción devuelve 400. La cantidad debe caber en un entero PostgreSQL de 32 bits.
+- Las compras validan saldo disponible descontando reservas LIMIT; las ventas validan tenencia menos acciones reservadas. Si faltan recursos, se guarda `REJECTED` sin afectar el portfolio.
+- Respuesta HTTP 201 para toda orden creada, incluida `REJECTED`: `{ id, userId, instrumentId, side, type, size, price, status, datetime }`. El cliente debe consultar `status` para conocer el resultado de negocio. `price` es un string decimal.
+- Formato inválido, campos desconocidos o instrumentos no operables: 400. Usuario/instrumento inexistente: 404. Cotización MARKET ausente o inválida: 503. Estos casos no crean órdenes.
+- No se agregan comisiones ni se admiten ventas en corto. Cada POST crea una nueva orden; no se implementó idempotencia de reintentos.
+
+El caso de uso depende de un puerto transaccional. Prisma bloquea la fila del usuario con `SELECT ... FOR UPDATE` parametrizado antes de leer recursos y guardar la orden. Se usa `ReadCommitted` para que una solicitud que esperó el bloqueo vea la orden ya confirmada por la anterior. La ejecución y la persistencia del rechazo suceden dentro de esa transacción. Cancelaciones, transferencias y compras/ventas usan el mismo bloqueo por usuario.
+
+El portfolio y el envío comparten el cálculo del ledger y la validación de movimientos. Las posiciones siguen derivándose de `orders`; no se introdujeron snapshots ni tablas de saldos. La cancelación tiene una ruta específica; el envío por número de cuenta queda fuera de este endpoint.
+
+`requests.http` contiene ejemplos para REST Client. Sus POST modifican la cuenta indicada.
+
+## Pruebas de órdenes y suite completa
+
+```sh
+npm run test:db:up
+npm test
+# Solo órdenes:
+npm run test:orders
+npm run lint
+npm run test:db:down
+```
+
+`compose.test.yaml` levanta PostgreSQL en localhost:55432, con la base `cocos_test` inicializada desde el SQL del challenge y almacenamiento temporal. `npm test` y `test:orders` cargan `.env.test.example` y permiten overrides desde `.env.test`. Las variables ya exportadas en la terminal tienen prioridad.
+
+Las pruebas de escritura exigen que el nombre de base termine en `_test`, crean usuarios propios y eliminan únicamente sus fixtures al finalizar. No operan sobre el usuario 1 del seed. Al detener y recrear el contenedor de pruebas se reinicializa su almacenamiento temporal. Los comandos existentes `test:instruments` y `test:portfolio` siguen siendo pruebas de lectura sobre la configuración local.
+
+La cobertura incluye persistencia y cambio del portfolio, redondeo por monto, reservas, rechazos de compras/ventas, entradas inválidas, cotizaciones ausentes y competencia entre solicitudes simultáneas de compra, reserva y venta.
+
+
+### Transferencias en el endpoint de órdenes
+
+El mismo `POST /users/:userId/orders` acepta ingresos y egresos:
+
+```json
+{
+  "instrumentId": 66,
+  "side": "CASH_IN",
+  "type": "MARKET",
+  "amount": "1000.00"
+}
+```
+
+Usar `CASH_OUT` para retirar pesos. El id 66 corresponde a ARS en el seed; se valida el ticker y tipo del instrumento, sin fijar ese id en la lógica.
+
+Las transferencias requieren MARKET, no aceptan un precio enviado por el cliente y se persisten con `price = 1` y `size` igual a los pesos transferidos. Aceptan exactamente uno de `size` o `amount`. Por compatibilidad con `orders.size INT`, el monto debe ser entero y estar entre 1 y 2147483647 pesos: los centavos se rechazan con 400, nunca se redondean.
+
+CASH_IN se guarda FILLED. CASH_OUT se guarda FILLED si el saldo disponible (descontando reservas LIMIT) alcanza; en caso contrario se guarda REJECTED y no altera el saldo. Ambos usan la misma transacción y bloqueo por usuario que las compras y ventas. No requieren cotización de ARS y se reflejan inmediatamente en el saldo y la posición ARS del portfolio.
+
+Estas transferencias son movimientos simulados del challenge; no ejecutan operaciones contra bancos externos.
+
+
+### Cancelación
+
+`POST /users/:userId/orders/:orderId/cancel` cambia una orden NEW del usuario a CANCELLED y devuelve HTTP 200 con `{ id, userId, status }`. La fila se conserva, con su cantidad, precio y fecha originales. Las reservas se liberan al dejar de contabilizar la orden como NEW; no se altera la tenencia FILLED ni el saldo contable.
+
+Cancelar FILLED, REJECTED o CANCELLED devuelve 409. Orden inexistente o perteneciente a otro usuario devuelve 404; identificadores inválidos devuelven 400. La validación y actualización ocurren dentro del bloqueo transaccional por usuario, y el UPDATE comprueba nuevamente que el estado sea NEW. Dos cancelaciones simultáneas producen una única cancelación exitosa.
+
+### Verificación de consideraciones funcionales
+
+| Consideración | Implementación y verificación |
+| --- | --- |
+| Precios en pesos | Cotizaciones y precios de órdenes en ARS; posición MONEDA con precio 1. |
+| Sin simulación de mercado | MARKET usa la cotización almacenada; LIMIT no se ejecuta mediante matching. |
+| Cantidad o monto, sin fracciones de acciones | Exactamente size o amount; floor(amount / precio), validación de entero positivo. |
+| BUY y SELL | Enum de dominio, validación y persistencia de ambos lados. |
+| NEW, FILLED, REJECTED, CANCELLED | Estados de dominio implementados y persistidos según el flujo. |
+| MARKET inmediata | FILLED si hay recursos; ledger y portfolio reflejan la ejecución. |
+| LIMIT pendiente | NEW si hay recursos; reserva dinero o acciones. |
+| Cancelar solo NEW | Caso de uso de cancelación, control de pertenencia y actualización condicional. |
+| Rechazar exceso de fondos o acciones | Se guarda REJECTED; incluye presupuesto amount superior al disponible y reservas previas. |
+| CASH_IN y CASH_OUT como órdenes | Instrumento ARS/MONEDA, MARKET, size en pesos y precio 1. |
+| Actualizar posiciones al ejecutar | Las consultas reconstruyen posiciones desde orders, por lo que reflejan cada FILLED confirmado. |
+| Movimientos pertinentes y size | Cálculo compartido del ledger: FILLED para saldos/tenencia; NEW solo para reservas. |
+| ARS es MONEDA | Se valida su tipo; se muestra en positions y se cuenta una sola vez en totalValue. |
+| Retorno diario | (close − previousClose) / previousClose; null si falta el denominador o es cero. |
+| Último close en MARKET | Cotización por date descendente, con id como desempate. |
+| FILLED para posiciones y rendimiento | BUY/SELL ejecutadas para cantidad y costo promedio; NEW, REJECTED y CANCELLED no modifican el costo. |
+
+Las pruebas funcionales usan PostgreSQL aislado y verifican persistencia, portfolio, precios, redondeo, transferencias, reservas, cancelaciones y concurrencia. Los supuestos restantes están documentados: rendimiento total de la posición abierta sobre costo promedio, reservas de LIMIT, transferencias en pesos enteros por size INT y el historial inconsistente de BMA provisto en el seed.
