@@ -1,20 +1,12 @@
+import { calculateLedger, PortfolioDataError, type LedgerMovement } from '../../shared/domain/ledger';
 import Decimal from 'decimal.js';
-import { OrderSide } from '../../shared/domain/order-side';
-import { OrderStatus } from '../../shared/domain/order-status';
-import { OrderType } from '../../shared/domain/order-type';
 import { InstrumentType } from '../../shared/domain/instrument-type';
 import { Currency } from '../../shared/domain/currency';
 
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 
-export interface PortfolioMovement {
-  instrumentId: number;
-  size: number;
-  price: string;
-  side: OrderSide;
-  status: OrderStatus.FILLED | OrderStatus.NEW;
-  type: OrderType;
-}
+export type { LedgerMovement as PortfolioMovement } from '../../shared/domain/ledger';
+export { PortfolioDataError } from '../../shared/domain/ledger';
 
 export interface PortfolioInstrument {
   id: number;
@@ -26,55 +18,14 @@ export interface PortfolioInstrument {
 }
 
 export interface PortfolioSnapshot {
-  movements: PortfolioMovement[];
+  movements: LedgerMovement[];
   instruments: PortfolioInstrument[];
 }
 
-export class PortfolioDataError extends Error {}
 export class PortfolioPriceUnavailableError extends Error {}
 
 export function calculatePortfolio(userId: number, snapshot: PortfolioSnapshot) {
-  let cash = new Amount(0);
-  let reservedCash = new Amount(0);
-  const positions = new Map<number, { quantity: number; cost: Decimal; inconsistent: boolean }>();
-  const reservedShares = new Map<number, number>();
-
-  for (const order of snapshot.movements) {
-    if (!Number.isSafeInteger(order.size) || order.size <= 0 || !new Amount(order.price).gt(0)) {
-      throw new PortfolioDataError('Invalid movement quantity or price');
-    }
-    const value = new Amount(order.price).mul(order.size);
-    if (order.status === OrderStatus.NEW) {
-      if (order.type !== OrderType.LIMIT || ![OrderSide.BUY, OrderSide.SELL].includes(order.side)) {
-        throw new PortfolioDataError('Invalid pending order');
-      }
-      if (order.side === OrderSide.BUY) reservedCash = reservedCash.plus(value);
-      else reservedShares.set(order.instrumentId, (reservedShares.get(order.instrumentId) ?? 0) + order.size);
-      continue;
-    }
-    if (order.side === OrderSide.CASH_IN || order.side === OrderSide.CASH_OUT) {
-      cash = cash.plus(order.side === OrderSide.CASH_IN ? order.size : -order.size);
-      continue;
-    }
-    const position = positions.get(order.instrumentId) ?? { quantity: 0, cost: new Amount(0), inconsistent: false };
-    if (order.side === OrderSide.BUY) {
-      cash = cash.minus(value);
-      position.quantity += order.size;
-      position.cost = position.cost.plus(value);
-    } else {
-      cash = cash.plus(value);
-      if (order.size > position.quantity) position.inconsistent = true;
-      if (position.quantity > 0) {
-        position.cost = position.cost.minus(position.cost.div(position.quantity).mul(order.size));
-      }
-      position.quantity -= order.size;
-    }
-    if (position.quantity === 0) {
-      position.cost = new Amount(0);
-      position.inconsistent = false;
-    }
-    positions.set(order.instrumentId, position);
-  }
+  const { cash, reservedCash, positions, reservedShares } = calculateLedger(snapshot.movements);
 
   let total = cash;
   const instruments = new Map(snapshot.instruments.map(instrument => [instrument.id, instrument]));

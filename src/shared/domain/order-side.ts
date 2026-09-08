@@ -10,3 +10,7 @@ const orderSides: ReadonlySet<string> = new Set(Object.values(OrderSide));
 export function isOrderSide(value: unknown): value is OrderSide {
   return typeof value === 'string' && orderSides.has(value);
 }
+
+export function isCashTransfer(side: OrderSide): boolean {
+  return side === OrderSide.CASH_IN || side === OrderSide.CASH_OUT;
+}

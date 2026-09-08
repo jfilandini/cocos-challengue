@@ -1,12 +1,12 @@
+import { toLedgerMovement } from '../../../shared/infrastructure/database/ledger-movement.mapper';
 import { Injectable } from '@nestjs/common';
-import { isOrderSide, OrderSide } from '../../../shared/domain/order-side';
+import { OrderSide } from '../../../shared/domain/order-side';
 import { OrderStatus } from '../../../shared/domain/order-status';
-import { isOrderType } from '../../../shared/domain/order-type';
 import { InstrumentType } from '../../../shared/domain/instrument-type';
 import { Currency } from '../../../shared/domain/currency';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
 import { AmbiguousPortfolioAccountError, type PortfolioRepository } from '../../application/ports/portfolio.repository';
-import { PortfolioDataError, type PortfolioMovement, type PortfolioSnapshot } from '../../domain/portfolio';
+import { type PortfolioSnapshot } from '../../domain/portfolio';
 
 @Injectable()
 export class PrismaPortfolioRepository implements PortfolioRepository {
@@ -31,22 +31,7 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
         orderBy: [{ datetime: 'asc' }, { id: 'asc' }],
         include: { instrument: { select: { ticker: true, type: true } } },
       });
-      const movements: PortfolioMovement[] = orders.map(order => {
-        if (order.instrumentId === null || order.size === null || order.price === null || order.datetime === null ||
-            !isOrderType(order.type) || !isOrderSide(order.side) ||
-            (order.status !== OrderStatus.FILLED && order.status !== OrderStatus.NEW)) {
-          throw new PortfolioDataError(`Incomplete movement ${order.id}`);
-        }
-        const cash = order.side === OrderSide.CASH_IN || order.side === OrderSide.CASH_OUT;
-        if (cash ? order.instrument?.ticker !== Currency.ARS || order.instrument.type !== InstrumentType.MONEDA
-          : order.instrument?.type !== InstrumentType.ACCIONES) {
-          throw new PortfolioDataError(`Invalid instrument for movement ${order.id}`);
-        }
-        return {
-          instrumentId: order.instrumentId, size: order.size, price: order.price.toString(),
-          side: order.side, status: order.status, type: order.type,
-        };
-      });
+      const movements = orders.map(toLedgerMovement);
       const instruments = await tx.instrument.findMany({
         where: { OR: [
           { id: { in: [...new Set(movements.filter(m => m.side === OrderSide.BUY || m.side === OrderSide.SELL).map(m => m.instrumentId))] } },

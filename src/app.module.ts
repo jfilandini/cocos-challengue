@@ -6,6 +6,7 @@ import { HealthController } from './shared/infrastructure/http/health.controller
 import { DomainExceptionFilter } from './shared/infrastructure/http/domain-exception.filter';
 import { InstrumentsModule } from './instruments/instruments.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { PortfolioModule } from './portfolio/portfolio.module';
     DatabaseModule,
     InstrumentsModule,
     PortfolioModule,
+    OrdersModule,
   ],
   controllers: [HealthController],
   providers: [
@@ -40,6 +42,5 @@ import { PortfolioModule } from './portfolio/portfolio.module';
   ],
 })
 export class AppModule {}
-
 
 

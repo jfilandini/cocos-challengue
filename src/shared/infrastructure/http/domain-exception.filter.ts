@@ -16,6 +16,7 @@ interface HttpResponse {
   json(body: unknown): void;
 }
 import { InvalidInstrumentSearchError } from '../../../instruments/application/search-instruments.use-case';
+import { InvalidOrderError, OrderCancellationError, OrderResourceNotFoundError, OrderPriceUnavailableError } from '../../../orders/domain/order';
 import {
   InvalidPortfolioUserError,
   PortfolioUserNotFoundError,
@@ -48,6 +49,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
     }
 
     if (
+      exception instanceof InvalidOrderError ||
       exception instanceof InvalidInstrumentSearchError ||
       exception instanceof InvalidPortfolioUserError ||
       exception instanceof InvalidPortfolioAccountError
@@ -56,13 +58,14 @@ export class DomainExceptionFilter implements ExceptionFilter {
     }
 
     if (
+      exception instanceof OrderResourceNotFoundError ||
       exception instanceof PortfolioUserNotFoundError ||
       exception instanceof PortfolioAccountNotFoundError
     ) {
       return new NotFoundException(exception.message);
     }
 
-    if (exception instanceof AmbiguousPortfolioAccountError) {
+    if (exception instanceof AmbiguousPortfolioAccountError || exception instanceof OrderCancellationError) {
       return new ConflictException(exception.message);
     }
 
@@ -70,7 +73,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
       return new UnprocessableEntityException(exception.message);
     }
 
-    if (exception instanceof PortfolioPriceUnavailableError) {
+    if (exception instanceof PortfolioPriceUnavailableError || exception instanceof OrderPriceUnavailableError) {
       return new ServiceUnavailableException(exception.message);
     }
 
