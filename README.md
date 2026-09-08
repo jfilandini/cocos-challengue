@@ -34,6 +34,20 @@ Después de cambiar el código, ejecutar nuevamente `docker compose up --build -
 
 ## Desarrollo local
 
+### Lint
+
+La configuración `eslint.config.mjs` usa ESLint 10 y typescript-eslint con análisis de tipos. Revisa código TypeScript, tests JavaScript y configuración; excluye `dist`, `node_modules`, cobertura y el cliente Prisma generado.
+
+```sh
+# Después de npm ci, generar el cliente para disponer de sus tipos:
+npm run prisma:generate
+npm run lint
+# Aplicar las correcciones automáticas disponibles:
+npm run lint:fix
+```
+
+Se detectan promesas sin manejar, usos incorrectos de async, variables sin usar e imports de tipos inconsistentes. Los archivos de dominio y aplicación no pueden importar NestJS, Prisma, infraestructura ni código generado. El comando falla ante errores o advertencias. El formato con Prettier queda fuera de este lint inicial.
+
 Usar Node.js 24 (`nvm use` si tenés nvm), y copiar `.env.example` a `.env`.
 
 ```sh

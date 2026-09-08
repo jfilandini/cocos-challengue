@@ -8,6 +8,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix --max-warnings=0",
     "test:unit": "npm run build && node --test test/*.unit.test.mjs",
     "test": "npm run build && node --env-file-if-exists=.env --test test/*.test.mjs",
     "test:instruments": "npm run build && node --env-file-if-exists=.env --test test/instruments.e2e.test.mjs test/search-instruments.unit.test.mjs",
@@ -36,9 +38,13 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.3",
     "@types/pg": "^8.23.1",
+    "eslint": "^10.10.0",
+    "globals": "^17.12.0",
     "prisma": "^7.10.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.0"
   }
 }
