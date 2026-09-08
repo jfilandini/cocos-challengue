@@ -38,7 +38,14 @@ CREATE TABLE marketdata (
   FOREIGN KEY (instrumentId) REFERENCES instruments(id)
 );
 
+CREATE INDEX idx_users_accountnumber ON users(accountnumber);
+CREATE INDEX idx_instruments_ticker ON instruments(ticker);
+CREATE INDEX idx_orders_user_status_datetime ON orders(userid, status, datetime, id);
+CREATE INDEX idx_orders_instrumentid ON orders(instrumentid);
+CREATE INDEX idx_marketdata_instrument_date ON marketdata(instrumentid, date DESC, id DESC);
+
 INSERT INTO users (email,accountNumber) VALUES
+
    ('emiliano@test.com','10001'),
    ('jose@test.com','10002'),
    ('francisco@test.com','10003'),

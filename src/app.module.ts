@@ -32,6 +32,7 @@ import { PortfolioModule } from './portfolio/portfolio.module';
   ],
   controllers: [HealthController],
   providers: [
+
     {
       provide: APP_FILTER,
       useClass: DomainExceptionFilter,
