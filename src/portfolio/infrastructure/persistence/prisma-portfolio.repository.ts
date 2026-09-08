@@ -48,7 +48,10 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
         };
       });
       const instruments = await tx.instrument.findMany({
-        where: { id: { in: [...new Set(movements.filter(m => m.side === OrderSide.BUY || m.side === OrderSide.SELL).map(m => m.instrumentId))] } },
+        where: { OR: [
+          { id: { in: [...new Set(movements.filter(m => m.side === OrderSide.BUY || m.side === OrderSide.SELL).map(m => m.instrumentId))] } },
+          { ticker: Currency.ARS, type: InstrumentType.MONEDA },
+        ] },
         select: {
           id: true, ticker: true, name: true,
           marketData: { where: { date: { not: null } }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },

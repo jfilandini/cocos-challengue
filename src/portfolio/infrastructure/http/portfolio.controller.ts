@@ -1,13 +1,23 @@
 import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
 import { GetPortfolioUseCase } from '../../application/get-portfolio.use-case';
+import { GetPortfolioByAccountNumberUseCase } from '../../application/get-portfolio-by-account-number.use-case';
 
-@Controller('users/:userId/portfolio')
+@Controller()
 export class PortfolioController {
-  constructor(private readonly getPortfolio: GetPortfolioUseCase) {}
+  constructor(
+    private readonly getPortfolioByUser: GetPortfolioUseCase,
+    private readonly getPortfolioByAccount: GetPortfolioByAccountNumberUseCase,
+  ) {}
 
-  @Get()
-  get(@Param('userId', ParseIntPipe) userId: number) {
-    return this.getPortfolio.execute(userId);
+  @Get('users/:userId/portfolio')
+  getByUserId(@Param('userId', ParseIntPipe) userId: number) {
+    return this.getPortfolioByUser.execute(userId);
+  }
+
+  @Get('accounts/:accountNumber/portfolio')
+  getByAccountNumber(@Param('accountNumber') accountNumber: string) {
+    return this.getPortfolioByAccount.execute(accountNumber);
   }
 }
+
 

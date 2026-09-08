@@ -22,10 +22,16 @@ test('seed portfolio includes filled LIMITs, ignores rejected/cancelled orders a
   assert.equal(result.reservedCash, '125500.00');
   assert.equal(result.availableCash, '627500.00');
   assert.deepEqual(result.positions.map(p => [p.ticker, p.quantity, p.marketValue, p.totalReturnPercent]), [
+    ['ARS', '753000.00', '753000.00', null],
     ['BMA', -10, '-15028.00', null], ['METR', 500, '114750.00', '-8.20'], ['PAMP', 40, '37034.00', '-0.45'],
   ]);
-  assert.ok(result.positions.every(p => p.priceDate === '2023-07-14'));
-  assert.equal(result.positions[0].inconsistentHistory, true);
+  assert.ok(result.positions.filter(p => p.type === 'ACCIONES').every(p => p.priceDate === '2023-07-14'));
+  const cash = result.positions.find(p => p.ticker === 'ARS');
+  assert.equal(cash.type, 'MONEDA');
+  assert.equal(cash.reservedQuantity, result.reservedCash);
+  assert.equal(cash.availableQuantity, result.availableCash);
+  assert.equal(result.positions.reduce((sum, p) => sum + Number(p.marketValue), 0).toFixed(2), result.totalValue);
+  assert.equal(result.positions.find(p => p.ticker === 'BMA').inconsistentHistory, true);
 });
 
 test('existing user without movements has an empty portfolio', async () => {
