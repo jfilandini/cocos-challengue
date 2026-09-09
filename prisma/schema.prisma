@@ -9,7 +9,7 @@ datasource db {
 }
 
 model User {
-  id            Int     @id @default(autoincrement())
+  id            BigInt     @id @default(autoincrement())
   email         String? @db.VarChar(255)
   accountNumber String? @map("accountnumber") @db.VarChar(20)
   orders        Order[]
@@ -19,7 +19,7 @@ model User {
 }
 
 model Instrument {
-  id         Int          @id @default(autoincrement())
+  id         BigInt          @id @default(autoincrement())
   ticker     String?      @db.VarChar(10)
   name       String?      @db.VarChar(255)
   type       String?      @db.VarChar(10)
@@ -31,11 +31,11 @@ model Instrument {
 }
 
 model Order {
-  id           Int         @id @default(autoincrement())
-  instrumentId Int?        @map("instrumentid")
-  userId       Int?        @map("userid")
+  id           BigInt         @id @default(autoincrement())
+  instrumentId BigInt?        @map("instrumentid")
+  userId       BigInt?        @map("userid")
   size         Int?
-  price        Decimal?    @db.Decimal(10, 2)
+  price        Decimal?    @db.Decimal(18, 2)
   type         String?     @db.VarChar(10)
   side         String?     @db.VarChar(10)
   status       String?     @db.VarChar(20)
@@ -49,17 +49,18 @@ model Order {
 }
 
 model MarketData {
-  id            Int         @id @default(autoincrement())
-  instrumentId  Int?        @map("instrumentid")
-  high          Decimal?    @db.Decimal(10, 2)
-  low           Decimal?    @db.Decimal(10, 2)
-  open          Decimal?    @db.Decimal(10, 2)
-  close         Decimal?    @db.Decimal(10, 2)
-  previousClose Decimal?    @map("previousclose") @db.Decimal(10, 2)
+  id            BigInt         @id @default(autoincrement())
+  instrumentId  BigInt?        @map("instrumentid")
+  high          Decimal?    @db.Decimal(18, 2)
+  low           Decimal?    @db.Decimal(18, 2)
+  open          Decimal?    @db.Decimal(18, 2)
+  close         Decimal?    @db.Decimal(18, 2)
+  previousClose Decimal?    @map("previousclose") @db.Decimal(18, 2)
   date          DateTime?   @db.Date
   instrument    Instrument? @relation(fields: [instrumentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([instrumentId, date(sort: Desc), id(sort: Desc)], map: "idx_marketdata_instrument_date")
   @@map("marketdata")
 }
+
 

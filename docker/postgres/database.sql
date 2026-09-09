@@ -1,23 +1,23 @@
 
 CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   email VARCHAR(255),
   accountNumber VARCHAR(20)
 );
 
 CREATE TABLE instruments (
-  id SERIAL PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   ticker VARCHAR(10),
   name VARCHAR(255),
   type VARCHAR(10)
 );
 
 CREATE TABLE orders (
-  id SERIAL PRIMARY KEY,
-  instrumentId INT,
-  userId INT,
+  id BIGSERIAL PRIMARY KEY,
+  instrumentId BIGINT,
+  userId BIGINT,
   size INT,
-  price NUMERIC(10, 2),
+  price NUMERIC(18, 2),
   type VARCHAR(10),
   side VARCHAR(10),
   status VARCHAR(20),
@@ -27,16 +27,17 @@ CREATE TABLE orders (
 );
 
 CREATE TABLE marketdata (
-  id SERIAL PRIMARY KEY,
-  instrumentId INT,
-  high NUMERIC(10, 2),
-  low NUMERIC(10, 2),
-  open NUMERIC(10, 2),
-  close NUMERIC(10, 2),
-  previousClose NUMERIC(10, 2),
+  id BIGSERIAL PRIMARY KEY,
+  instrumentId BIGINT,
+  high NUMERIC(18, 2),
+  low NUMERIC(18, 2),
+  open NUMERIC(18, 2),
+  close NUMERIC(18, 2),
+  previousClose NUMERIC(18, 2),
   date DATE,
   FOREIGN KEY (instrumentId) REFERENCES instruments(id)
 );
+
 
 CREATE INDEX idx_users_accountnumber ON users(accountnumber);
 CREATE INDEX idx_instruments_ticker ON instruments(ticker);
