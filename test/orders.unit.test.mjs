@@ -2,10 +2,12 @@ import { rebuildSnapshot } from '../dist/shared/domain/account-snapshot.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { generateOrderDraft, InvalidOrderError } from '../dist/orders/domain/order.js';
-import { validateOrder, validateOrderSize } from '../dist/orders/application/order.schema.js';
+import { validateOrder as parseOrder, validateOrderSize } from '../dist/orders/application/order.schema.js';
 import { OrderSide } from '../dist/shared/domain/order-side.js';
 import { OrderStatus } from '../dist/shared/domain/order-status.js';
 import { OrderType } from '../dist/shared/domain/order-type.js';
+
+const validateOrder = body => parseOrder(body && typeof body === 'object' && !Array.isArray(body) ? { transactionId: 'unit-order', ...body } : body);
 
 const buy = { instrumentId: 1n, side: OrderSide.BUY, type: OrderType.MARKET, size: 1 };
 const deposit = { instrumentId: 66n, side: OrderSide.CASH_IN, type: OrderType.MARKET, status: OrderStatus.FILLED, size: 1, price: '1.00' };

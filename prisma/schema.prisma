@@ -32,6 +32,7 @@ model Instrument {
 }
 
 model Order {
+  transactionId String? @unique(map: "uq_orders_transaction") @map("transactionid") @db.VarChar(100)
   id           BigInt         @id @default(autoincrement())
   instrumentId BigInt?        @map("instrumentid")
   userId       BigInt?        @map("userid")

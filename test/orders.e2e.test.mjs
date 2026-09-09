@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../dist/app.module.js';
+import { SubmitOrderUseCase } from '../dist/orders/application/submit-order.use-case.js';
 import { PrismaOrderRepository } from '../dist/orders/infrastructure/persistence/prisma-order.repository.js';
 import { PrismaPortfolioRepository } from '../dist/portfolio/infrastructure/persistence/prisma-portfolio.repository.js';
 import { rebuildAccountSnapshot } from '../dist/shared/infrastructure/database/account-snapshot.store.js';
@@ -41,7 +42,7 @@ async function user(cash = 1000) {
   return created.id;
 }
 async function submit(id, body, status = 201) {
-  const response = await fetch(`${url}/users/${id}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const response = await fetch(`${url}/users/${id}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body && typeof body === 'object' && !Array.isArray(body) ? { transactionId: randomUUID(), ...body } : body) });
   assert.equal(response.status, status);
   return response.json();
 }
@@ -333,7 +334,7 @@ test('orders and snapshot changes roll back together on a failed transaction', a
   const ordersBefore = await prisma.order.count({ where: { userId: id } });
   const repository = new PrismaOrderRepository(prisma);
   await assert.rejects(repository.withUserLock(id, async transaction => {
-    await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 40, price: '1' });
+    await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 40, price: '1' }, randomUUID());
     throw new Error('Simulated transaction failure');
   }), /Simulated transaction failure/);
   assert.equal(await prisma.order.count({ where: { userId: id } }), ordersBefore);
@@ -353,7 +354,7 @@ test('bootstrap streams more than one ledger page; subsequent reads and submissi
   await portfolios.findByUserId(id);
   await new PrismaOrderRepository(tracked).withUserLock(id, async transaction => {
     assert.equal((await transaction.readSnapshot()).cash, '1005');
-    await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 5, price: '1' });
+    await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 5, price: '1' }, randomUUID());
   });
   assert.equal((await portfolios.findByUserId(id)).account.cash, '1000');
   assert.equal(historyQueries, 0);
@@ -380,9 +381,160 @@ test('a failed snapshot write rolls back order creation and cancellation', async
   const count = await prisma.order.count({ where: { userId: id } });
   const failing = prisma.$extends({ query: { accountSnapshot: { upsert() { throw new Error('Snapshot write failed'); } } } });
   const repository = new PrismaOrderRepository(failing);
-  await assert.rejects(repository.withUserLock(id, transaction => transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 10, price: '1' })), /Snapshot write failed/);
+  await assert.rejects(repository.withUserLock(id, transaction => transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 10, price: '1' }, randomUUID())), /Snapshot write failed/);
   assert.equal(await prisma.order.count({ where: { userId: id } }), count);
   await assert.rejects(repository.withUserLock(id, transaction => transaction.cancel(BigInt(pending.id))), /Snapshot write failed/);
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: BigInt(pending.id) } })).status, 'NEW');
   assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
+});
+
+
+test('simultaneous identical submissions create one order and return conflicts for duplicates', async () => {
+  const id = await user(1000);
+  const body = { ...market, transactionId: randomUUID() };
+  const responses = await Promise.all(Array.from({ length: 8 }, () => fetch(`${url}/users/${id}/orders`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })));
+  assert.deepEqual(responses.map(response => response.status).sort(), [201, 409, 409, 409, 409, 409, 409, 409]);
+  const created = await responses.find(response => response.status === 201).json();
+  assert.equal(created.transactionId, body.transactionId);
+  assert.equal(await prisma.order.count({ where: { userId: id, transactionId: body.transactionId } }), 1);
+  assert.equal((await portfolio(id)).availableCash, '482.00');
+});
+
+test('concurrent reuse with different details returns 409 and only one order wins', async () => {
+  const id = await user(1000);
+  const transactionId = randomUUID();
+  const responses = await Promise.all([1, 2].map(size => fetch(`${url}/users/${id}/orders`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...market, size, transactionId }),
+  })));
+  assert.deepEqual(responses.map(r => r.status).sort(), [201, 409]);
+  assert.equal(await prisma.order.count({ where: { userId: id, transactionId } }), 1);
+});
+
+test('all reused keys conflict regardless of payload or user', async () => {
+  const id = await user();
+  const transactionId = randomUUID();
+  const body = { ...market, type: 'LIMIT', price: '10', transactionId };
+  await submit(id, body);
+  await submit(id, { ...body, instrumentId: '1', price: 10.00 }, 409);
+  for (const change of [{ instrumentId: 3 }, { side: 'SELL' }, { size: 1 }, { price: '11' }, { size: undefined, amount: '20' }, { type: 'MARKET', price: undefined }]) {
+    await submit(id, { ...body, ...change }, 409);
+  }
+  const other = await user();
+  await submit(other, body, 409);
+  assert.equal((await submit(id, { ...body, transactionId: randomUUID() })).status, 'NEW');
+});
+
+test('transfer retries credit or debit once and rejected orders stay rejected after funding', async () => {
+  const id = await user(0);
+  for (const side of ['CASH_IN', 'CASH_OUT']) {
+    const body = { ...transfer, side, transactionId: randomUUID() };
+    await submit(id, body);
+    await Promise.all([submit(id, body, 409), submit(id, body, 409)]);
+    assert.equal((await portfolio(id)).availableCash, side === 'CASH_IN' ? '100.00' : '0.00');
+  }
+  const body = { ...market, transactionId: randomUUID() };
+  const rejected = await submit(id, body);
+  assert.equal(rejected.status, 'REJECTED');
+  await submit(id, { ...transfer, size: 1000 });
+  await submit(id, body, 409);
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: BigInt(rejected.id) } })).status, 'REJECTED');
+  assert.equal((await portfolio(id)).availableCash, '1000.00');
+});
+
+test('retrying a cancelled LIMIT does not recreate its reservation', async () => {
+  const id = await user();
+  const body = { ...market, type: 'LIMIT', price: '10', transactionId: randomUUID() };
+  const first = await submit(id, body);
+  await cancel(id, first.id);
+  await submit(id, body, 409);
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: BigInt(first.id) } })).status, 'CANCELLED');
+  assert.equal((await portfolio(id)).reservedCash, '0.00');
+});
+
+test('duplicate MARKET request returns conflict before checking the current quote', async () => {
+  const id = await user();
+  const instrument = await prisma.instrument.create({ data: { ticker: 'IDEMQUOTE', name: 'Idempotency test', type: 'ACCIONES' } });
+  createdInstruments.push(instrument.id);
+  const quote = await prisma.marketData.create({ data: { instrumentId: instrument.id, close: '10', date: new Date() } });
+  const body = { instrumentId: instrument.id.toString(), side: 'BUY', type: 'MARKET', amount: '100', transactionId: randomUUID() };
+  const first = await submit(id, body);
+  await prisma.marketData.delete({ where: { id: quote.id } });
+  await submit(id, body, 409);
+  assert.equal(await prisma.order.count({ where: { id: BigInt(first.id) } }), 1);
+});
+
+test('missing or invalid transaction IDs fail before saving', async () => {
+  const id = await user();
+  const before = await prisma.order.count({ where: { userId: id } });
+  for (const transactionId of [undefined, null, '', '   ', 123, 'a'.repeat(101)]) {
+    await submit(id, { ...market, transactionId }, 400);
+  }
+  assert.equal(await prisma.order.count({ where: { userId: id } }), before);
+});
+
+test('database uniqueness rejects duplicate keys even when the API is bypassed', async () => {
+  const id = await user();
+  const transactionId = randomUUID();
+  await submit(id, { ...market, transactionId });
+  const saved = await prisma.order.findFirstOrThrow({ where: { userId: id, transactionId } });
+  const { id: orderId, ...data } = saved;
+  assert.ok(orderId);
+  await assert.rejects(prisma.order.create({ data }), error => error.code === 'P2002');
+});
+
+
+test('a rolled-back submission does not consume its transaction ID', async () => {
+  const id = await user(100);
+  await portfolio(id);
+  const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
+  const body = { ...transfer, size: 50, transactionId: randomUUID() };
+  const failing = prisma.$extends({ query: { accountSnapshot: { upsert() { throw new Error('Snapshot write failed'); } } } });
+  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(failing));
+  await assert.rejects(useCase.execute(id, body), /Snapshot write failed/);
+  assert.equal(await prisma.order.count({ where: { userId: id, transactionId: body.transactionId } }), 0);
+  assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
+  await submit(id, body);
+  await submit(id, body, 409);
+  assert.equal((await portfolio(id)).availableCash, '150.00');
+});
+
+
+test('simultaneous requests from different users cannot reuse a global transaction ID', async () => {
+  const users = [await user(), await user()];
+  const transactionId = randomUUID();
+  const responses = await Promise.all(users.map(id => fetch(`${url}/users/${id}/orders`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...market, transactionId }),
+  })));
+  assert.deepEqual(responses.map(r => r.status).sort(), [201, 409]);
+  assert.equal(await prisma.order.count({ where: { transactionId } }), 1);
+  const balances = await Promise.all(users.map(async id => (await portfolio(id)).availableCash));
+  assert.deepEqual(balances.sort(), ['1000.00', '482.00']);
+});
+
+test('a global unique violation after simultaneous lookups becomes a conflict and rolls back', async () => {
+  const users = [await user(), await user()];
+  await Promise.all(users.map(portfolio));
+  const transactionId = randomUUID();
+  let reads = 0;
+  let release;
+  const ready = new Promise(resolve => { release = resolve; });
+  const tracked = prisma.$extends({ query: { order: { async findUnique({ args, query }) {
+    const result = await query(args);
+    if (args.where.transactionId === transactionId) {
+      assert.equal(result, null);
+      if (++reads === 2) release();
+      await ready;
+    }
+    return result;
+  } } } });
+  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(tracked));
+  const results = await Promise.allSettled(users.map(id => useCase.execute(id, { ...market, transactionId })));
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  const failure = results.find(r => r.status === 'rejected').reason;
+  assert.equal(failure.constructor.name, 'OrderIdempotencyConflictError', JSON.stringify(failure.meta));
+  assert.equal(await prisma.order.count({ where: { transactionId } }), 1);
+  const balances = await Promise.all(users.map(async id => (await portfolio(id)).availableCash));
+  assert.deepEqual(balances.sort(), ['1000.00', '482.00']);
 });
