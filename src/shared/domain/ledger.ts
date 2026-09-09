@@ -6,7 +6,7 @@ import { OrderType } from './order-type';
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 
 export interface LedgerMovement {
-  instrumentId: number;
+  instrumentId: bigint;
   size: number;
   price: string;
   side: OrderSide;
@@ -19,8 +19,8 @@ export class PortfolioDataError extends Error {}
 export function calculateLedger(movements: LedgerMovement[]) {
   let cash = new Amount(0);
   let reservedCash = new Amount(0);
-  const positions = new Map<number, { quantity: number; cost: Decimal; inconsistent: boolean }>();
-  const reservedShares = new Map<number, number>();
+  const positions = new Map<bigint, { quantity: number; cost: Decimal; inconsistent: boolean }>();
+  const reservedShares = new Map<bigint, number>();
 
   for (const order of movements) {
     if (!Number.isSafeInteger(order.size) || order.size <= 0 || !new Amount(order.price).gt(0)) {

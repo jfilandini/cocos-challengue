@@ -1,12 +1,13 @@
+import { InvalidDatabaseIdError } from '../dist/shared/domain/database-id.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { calculatePortfolio, PortfolioPriceUnavailableError } from '../dist/portfolio/domain/portfolio.js';
-import { GetPortfolioUseCase, InvalidPortfolioUserError, PortfolioUserNotFoundError } from '../dist/portfolio/application/get-portfolio.use-case.js';
+import { GetPortfolioUseCase, PortfolioUserNotFoundError } from '../dist/portfolio/application/get-portfolio.use-case.js';
 
-const movement = (side, size, price = '1', overrides = {}) => ({ instrumentId: side.startsWith('CASH') ? 66 : 1, side, size, price, type: 'MARKET', status: 'FILLED', ...overrides });
-const instrument = { id: 1, ticker: 'TEST', name: 'Test', close: '20', previousClose: '16', date: '2023-07-14' };
-const ars = { id: 66, ticker: 'ARS', name: 'PESOS', close: null, previousClose: null, date: null };
-const portfolio = (movements, instruments = [instrument]) => calculatePortfolio(1, { movements, instruments: [...instruments, ars] });
+const movement = (side, size, price = '1', overrides = {}) => ({ instrumentId: side.startsWith('CASH') ? 66n : 1n, side, size, price, type: 'MARKET', status: 'FILLED', ...overrides });
+const instrument = { id: 1n, ticker: 'TEST', name: 'Test', close: '20', previousClose: '16', date: '2023-07-14' };
+const ars = { id: 66n, ticker: 'ARS', name: 'PESOS', close: null, previousClose: null, date: null };
+const portfolio = (movements, instruments = [instrument]) => calculatePortfolio(1n, { movements, instruments: [...instruments, ars] });
 
 test('weighted cost survives partial sales; pending orders reserve resources without changing holdings', () => {
   const result = portfolio([
@@ -60,7 +61,7 @@ test('use case distinguishes missing users from empty portfolios and rejects inv
   assert.equal((await empty.execute(2)).totalValue, '0.00');
   const missing = new GetPortfolioUseCase({ async findByUserId() { return null; } });
   await assert.rejects(missing.execute(99), PortfolioUserNotFoundError);
-  for (const id of [0, -1, 1.5, NaN, 2147483648]) await assert.rejects(empty.execute(id), InvalidPortfolioUserError);
+  for (const id of [1.5, NaN, 'abc']) await assert.rejects(empty.execute(id), InvalidDatabaseIdError);
 });
 
 

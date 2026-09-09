@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Param, ParseIntPipe, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
 import { SubmitOrderUseCase } from '../../application/submit-order.use-case';
 import { CancelOrderUseCase } from '../../application/cancel-order.use-case';
 
@@ -8,12 +8,14 @@ export class OrdersController {
 
   @Post(':orderId/cancel')
   @HttpCode(200)
-  cancel(@Param('userId', ParseIntPipe) userId: number, @Param('orderId', ParseIntPipe) orderId: number) {
-    return this.cancelOrder.execute(userId, orderId);
+  async cancel(@Param('userId') userId: string, @Param('orderId') orderId: string) {
+    const order = await this.cancelOrder.execute(userId, orderId);
+    return { ...order, id: order.id.toString(), userId: order.userId.toString() };
   }
 
   @Post()
-  submit(@Param('userId', ParseIntPipe) userId: number, @Body() body: unknown) {
-    return this.submitOrder.execute(userId, body);
+  async submit(@Param('userId') userId: string, @Body() body: unknown) {
+    const order = await this.submitOrder.execute(userId, body);
+    return { ...order, id: order.id.toString(), userId: order.userId.toString(), instrumentId: order.instrumentId.toString() };
   }
 }

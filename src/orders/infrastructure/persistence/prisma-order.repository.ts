@@ -11,9 +11,9 @@ import type { OrderRepository, OrderTransaction } from '../../application/ports/
 export class PrismaOrderRepository implements OrderRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  withUserLock<T>(userId: number, work: (transaction: OrderTransaction) => Promise<T>): Promise<T> {
+  withUserLock<T>(userId: bigint, work: (transaction: OrderTransaction) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async tx => {
-      const users = await tx.$queryRaw<{ id: number }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      const users = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       if (!users.length) throw new OrderResourceNotFoundError('User not found');
       return work({
         async findOrder(id) {

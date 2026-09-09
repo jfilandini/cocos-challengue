@@ -12,7 +12,7 @@ import { type PortfolioSnapshot } from '../../domain/portfolio';
 export class PrismaPortfolioRepository implements PortfolioRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findByUserId(userId: number): Promise<PortfolioSnapshot | null> {
+  findByUserId(userId: bigint): Promise<PortfolioSnapshot | null> {
     return this.find({ id: userId });
   }
 
@@ -20,7 +20,7 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
     return this.find({ accountNumber });
   }
 
-  private find(where: { id: number } | { accountNumber: string }) {
+  private find(where: { id: bigint } | { accountNumber: string }) {
     return this.prisma.$transaction(async tx => {
       const users = await tx.user.findMany({ where, select: { id: true }, take: 2 });
       if (!users.length) return null;

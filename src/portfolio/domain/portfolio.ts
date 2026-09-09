@@ -9,7 +9,7 @@ export type { LedgerMovement as PortfolioMovement } from '../../shared/domain/le
 export { PortfolioDataError } from '../../shared/domain/ledger';
 
 export interface PortfolioInstrument {
-  id: number;
+  id: bigint;
   ticker: string | null;
   name: string | null;
   close: string | null;
@@ -24,7 +24,7 @@ export interface PortfolioSnapshot {
 
 export class PortfolioPriceUnavailableError extends Error {}
 
-export function calculatePortfolio(userId: number, snapshot: PortfolioSnapshot) {
+export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) {
   const { cash, reservedCash, positions, reservedShares } = calculateLedger(snapshot.movements);
 
   let total = cash;
@@ -55,11 +55,11 @@ export function calculatePortfolio(userId: number, snapshot: PortfolioSnapshot) 
         ? close.minus(instrument.previousClose).div(instrument.previousClose).mul(100).toFixed(2) : null,
       inconsistentHistory: position.inconsistent,
     };
-  }).sort((a, b) => (a.ticker ?? '').localeCompare(b.ticker ?? '') || a.instrumentId - b.instrumentId);
+  }).sort((a, b) => (a.ticker ?? '').localeCompare(b.ticker ?? '') || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
 
   const result: Array<(typeof stockPositions)[number] | {
     type: InstrumentType.MONEDA;
-    instrumentId: number;
+    instrumentId: bigint;
     ticker: string;
     name: string | null;
     quantity: string;
@@ -92,7 +92,7 @@ export function calculatePortfolio(userId: number, snapshot: PortfolioSnapshot) 
       inconsistentHistory: cash.lt(0) || cash.lt(reservedCash),
     });
   }
-  result.sort((a, b) => (a.ticker ?? '').localeCompare(b.ticker ?? '') || a.instrumentId - b.instrumentId);
+  result.sort((a, b) => (a.ticker ?? '').localeCompare(b.ticker ?? '') || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
 
   return {
     userId,

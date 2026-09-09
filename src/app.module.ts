@@ -34,7 +34,6 @@ import { OrdersModule } from './orders/orders.module';
   ],
   controllers: [HealthController],
   providers: [
-
     {
       provide: APP_FILTER,
       useClass: DomainExceptionFilter,

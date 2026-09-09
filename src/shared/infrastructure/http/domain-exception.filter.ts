@@ -1,3 +1,4 @@
+import { InvalidDatabaseIdError } from '../../domain/database-id';
 import {
   ArgumentsHost,
   BadRequestException,
@@ -49,6 +50,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
     }
 
     if (
+      exception instanceof InvalidDatabaseIdError ||
       exception instanceof InvalidOrderError ||
       exception instanceof InvalidInstrumentSearchError ||
       exception instanceof InvalidPortfolioUserError ||

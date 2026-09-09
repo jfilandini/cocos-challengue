@@ -20,7 +20,12 @@ export function toLedgerMovement(order: MovementRow): LedgerMovement {
     throw new PortfolioDataError(`Invalid instrument for movement ${order.id}`);
   }
   return {
-    instrumentId: order.instrumentId, size: order.size, price: order.price.toString(),
-    side: order.side, type: order.type, status: order.status,
+    instrumentId: order.instrumentId,
+    size: Number(order.size),
+    price: order.price.toString(),
+    side: order.side,
+    type: order.type,
+    status: order.status,
   };
 }
+

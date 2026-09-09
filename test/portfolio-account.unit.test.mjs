@@ -8,10 +8,10 @@ test('account lookup trims whitespace but preserves leading zeros and uses the r
   const useCase = new GetPortfolioByAccountNumberUseCase({
     async findByAccountNumber(account) {
       assert.equal(account, '00123');
-      return { userId: 7, movements: [], instruments: [] };
+      return { userId: 7n, movements: [], instruments: [] };
     },
   });
-  assert.equal((await useCase.execute(' 00123 ')).userId, 7);
+  assert.equal((await useCase.execute(' 00123 ')).userId, 7n);
 });
 
 test('invalid accounts do not query persistence; unknown accounts are distinguished', async () => {
@@ -27,7 +27,7 @@ test('invalid accounts do not query persistence; unknown accounts are distinguis
 test('repository rejects duplicate account matches before reading any movements', async () => {
   const repository = new PrismaPortfolioRepository({
     async $transaction(callback) {
-      return callback({ user: { async findMany() { return [{ id: 1 }, { id: 2 }]; } } });
+      return callback({ user: { async findMany() { return [{ id: 1n }, { id: 2n }]; } } });
     },
   });
   await assert.rejects(repository.findByAccountNumber('duplicate'), AmbiguousPortfolioAccountError);

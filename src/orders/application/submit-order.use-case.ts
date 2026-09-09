@@ -1,3 +1,4 @@
+import { parseDatabaseId } from '../../shared/domain/database-id';
 import { InstrumentType } from '../../shared/domain/instrument-type';
 import { Currency } from '../../shared/domain/currency';
 import { isCashTransfer } from '../../shared/domain/order-side';
@@ -7,8 +8,9 @@ import type { OrderRepository } from './ports/order.repository';
 export class SubmitOrderUseCase {
   constructor(private readonly orders: OrderRepository) {}
 
-  execute(userId: number, body: unknown) {
-    const request = validateOrder(userId, body);
+  execute(userIdInput: unknown, body: unknown) {
+    const userId = parseDatabaseId(userIdInput);
+    const request = validateOrder(body);
     return this.orders.withUserLock(userId, async transaction => {
       const instrument = await transaction.findInstrument(request.instrumentId);
       if (!instrument) throw new OrderResourceNotFoundError('Instrument not found');

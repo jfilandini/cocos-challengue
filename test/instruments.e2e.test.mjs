@@ -27,7 +27,7 @@ async function search(term) {
 test('finds a partial ticker, ignoring case and surrounding whitespace', async () => {
   const results = await search('  ypF  ');
   assert.deepEqual(results, [
-    { id: 50, ticker: 'YPFD', name: 'Y.P.F. S.A.', type: 'ACCIONES' },
+    { id: '50', ticker: 'YPFD', name: 'Y.P.F. S.A.', type: 'ACCIONES' },
   ]);
 });
 
@@ -43,7 +43,7 @@ test('combines ticker and name matches without duplicate instruments', async () 
 
 test('returns an empty list for absent matches and finds currencies by ticker or name', async () => {
   assert.deepEqual(await search('no-such-instrument'), []);
-  const cash = { id: 66, ticker: 'ARS', name: 'PESOS', type: 'MONEDA' };
+  const cash = { id: '66', ticker: 'ARS', name: 'PESOS', type: 'MONEDA' };
   assert.deepEqual(await search('pesos'), [cash]);
   assert.deepEqual(await search('ars'), [cash]);
 });

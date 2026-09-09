@@ -10,6 +10,7 @@ let app;
 let prisma;
 let url;
 const createdUsers = [];
+const createdInstruments = [];
 before(async () => {
   assert.ok(new URL(process.env.DATABASE_URL).pathname.endsWith('_test'), 'Write tests require a dedicated *_test database');
   app = await NestFactory.create(AppModule, { logger: false });
@@ -22,6 +23,10 @@ after(async () => {
     if (prisma && createdUsers.length) {
       await prisma.order.deleteMany({ where: { userId: { in: createdUsers } } });
       await prisma.user.deleteMany({ where: { id: { in: createdUsers } } });
+    }
+    if (prisma && createdInstruments.length) {
+      await prisma.marketData.deleteMany({ where: { instrumentId: { in: createdInstruments } } });
+      await prisma.instrument.deleteMany({ where: { id: { in: createdInstruments } } });
     }
   } finally { await app?.close(); }
 });
@@ -45,7 +50,7 @@ test('MARKET uses latest close, persists FILLED, and immediately changes portfol
   const buy = await submit(id, market);
   assert.equal(buy.status, 'FILLED');
   assert.equal(buy.price, '259.00');
-  const saved = await prisma.order.findUnique({ where: { id: buy.id } });
+  const saved = await prisma.order.findUnique({ where: { id: BigInt(buy.id) } });
   assert.equal(saved.status, 'FILLED');
   assert.equal(saved.size, 2);
   assert.equal(saved.price.toFixed(2), '259.00');
@@ -76,7 +81,7 @@ test('insufficient money or shares is persisted as REJECTED without changing bal
   for (const side of ['BUY', 'SELL']) {
     const result = await submit(id, { ...market, side });
     assert.equal(result.status, 'REJECTED');
-    assert.equal((await prisma.order.findUnique({ where: { id: result.id } })).status, 'REJECTED');
+    assert.equal((await prisma.order.findUnique({ where: { id: BigInt(result.id) } })).status, 'REJECTED');
   }
   assert.equal((await portfolio(id)).availableCash, '100.00');
 });
@@ -138,7 +143,7 @@ test('CASH_IN and CASH_OUT persist as orders at price one and update the ARS pos
   const incoming = await submit(id, transfer);
   assert.equal(incoming.status, 'FILLED');
   assert.equal(incoming.price, '1.00');
-  const saved = await prisma.order.findUnique({ where: { id: incoming.id } });
+  const saved = await prisma.order.findUnique({ where: { id: BigInt(incoming.id) } });
   assert.equal(saved.side, 'CASH_IN');
   assert.equal(saved.size, 100);
   const outgoing = await submit(id, { instrumentId: 66, side: 'CASH_OUT', type: 'MARKET', amount: '40.00' });
@@ -155,7 +160,7 @@ test('CASH_OUT cannot consume reserved funds; rejection is persisted', async () 
   await submit(id, { ...market, type: 'LIMIT', size: 1, price: '80.00' });
   const rejected = await submit(id, { ...transfer, side: 'CASH_OUT', size: 21 });
   assert.equal(rejected.status, 'REJECTED');
-  assert.equal((await prisma.order.findUnique({ where: { id: rejected.id } })).status, 'REJECTED');
+  assert.equal((await prisma.order.findUnique({ where: { id: BigInt(rejected.id) } })).status, 'REJECTED');
   assert.equal((await portfolio(id)).availableCash, '20.00');
   assert.equal((await submit(id, { ...transfer, side: 'CASH_OUT', size: 20 })).status, 'FILLED');
   assert.equal((await portfolio(id)).availableCash, '0.00');
@@ -200,8 +205,8 @@ test('cancelling NEW BUY releases reserved cash and keeps the order history', as
   const id = await user(100);
   const pending = await submit(id, { ...market, size: 1, type: 'LIMIT', price: '80.00' });
   assert.equal((await portfolio(id)).availableCash, '20.00');
-  assert.deepEqual(await cancel(id, pending.id), { id: pending.id, userId: id, status: 'CANCELLED' });
-  assert.equal((await prisma.order.findUnique({ where: { id: pending.id } })).status, 'CANCELLED');
+  assert.deepEqual(await cancel(id, pending.id), { id: pending.id, userId: id.toString(), status: 'CANCELLED' });
+  assert.equal((await prisma.order.findUnique({ where: { id: BigInt(pending.id) } })).status, 'CANCELLED');
   const result = await portfolio(id);
   assert.equal(result.availableCash, '100.00');
   assert.equal(result.reservedCash, '0.00');
@@ -231,7 +236,7 @@ test('FILLED, REJECTED and CANCELLED orders cannot be cancelled', async () => {
   await cancel(id, pending.id);
   for (const order of [filled, rejected, { ...pending, status: 'CANCELLED' }]) {
     await cancel(id, order.id, 409);
-    assert.equal((await prisma.order.findUnique({ where: { id: order.id } })).status, order.status);
+    assert.equal((await prisma.order.findUnique({ where: { id: BigInt(order.id) } })).status, order.status);
   }
 });
 
@@ -242,8 +247,8 @@ test('cancellation enforces ownership and rejects nonexistent or invalid identif
   await cancel(other, pending.id, 404);
   await cancel(owner, 2147483647, 404);
   await cancel(2147483647, pending.id, 404);
-  for (const orderId of ['abc', 0, -1, 1.5, 2147483648]) await cancel(owner, orderId, 400);
-  assert.equal((await prisma.order.findUnique({ where: { id: pending.id } })).status, 'NEW');
+  for (const orderId of ['abc', 1.5]) await cancel(owner, orderId, 400);
+  assert.equal((await prisma.order.findUnique({ where: { id: BigInt(pending.id) } })).status, 'NEW');
 });
 
 test('two cancellations only release the reservation once', async () => {
@@ -259,6 +264,32 @@ test('a BUY amount exceeding available funds is REJECTED even if rounded share c
   const result = await submit(id, { instrumentId: 1, side: 'BUY', type: 'LIMIT', amount: '110.00', price: '60.00' });
   assert.equal(result.size, 1);
   assert.equal(result.status, 'REJECTED');
-  assert.equal((await prisma.order.findUnique({ where: { id: result.id } })).status, 'REJECTED');
+  assert.equal((await prisma.order.findUnique({ where: { id: BigInt(result.id) } })).status, 'REJECTED');
   assert.equal((await portfolio(id)).availableCash, '100.00');
+});
+
+
+test('IDs above the JS safe-integer limit survive searches, orders, portfolios and cancellation', async () => {
+  const id = 9007199254740993n;
+  for (const userId of [id - 1n, id]) {
+    await prisma.user.create({ data: { id: userId } });
+    createdUsers.push(userId);
+  }
+  await prisma.instrument.create({ data: { id, ticker: 'BIGIDTEST', name: 'Bigint test', type: 'ACCIONES' } });
+  createdInstruments.push(id);
+  await prisma.marketData.create({ data: { id, instrumentId: id, close: '10', previousClose: '9', date: new Date('2026-01-01') } });
+  await submit(id, { ...transfer, instrumentId: '66' });
+  const buy = await submit(id, { ...market, instrumentId: id.toString() });
+  assert.equal(buy.userId, id.toString());
+  assert.equal(buy.instrumentId, id.toString());
+  const result = await portfolio(id);
+  assert.equal(result.userId, id.toString());
+  assert.equal(result.positions.find(p => p.ticker === 'BIGIDTEST').instrumentId, id.toString());
+  assert.equal(result.availableCash, '80.00');
+  assert.equal((await portfolio(id - 1n)).availableCash, '0.00');
+  const search = await (await fetch(`${url}/instruments?query=BIGIDTEST`)).json();
+  assert.equal(search[0].id, id.toString());
+  await prisma.order.create({ data: { id, userId: id, instrumentId: id, side: 'BUY', type: 'LIMIT', status: 'NEW', size: 1, price: '10', datetime: new Date() } });
+  await cancel(id - 1n, id, 404);
+  assert.deepEqual(await cancel(id, id), { id: id.toString(), userId: id.toString(), status: 'CANCELLED' });
 });

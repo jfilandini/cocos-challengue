@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { GetPortfolioUseCase } from '../../application/get-portfolio.use-case';
 import { GetPortfolioByAccountNumberUseCase } from '../../application/get-portfolio-by-account-number.use-case';
 
@@ -10,13 +10,20 @@ export class PortfolioController {
   ) {}
 
   @Get('users/:userId/portfolio')
-  getByUserId(@Param('userId', ParseIntPipe) userId: number) {
-    return this.getPortfolioByUser.execute(userId);
+  async getByUserId(@Param('userId') userId: string) {
+    return this.toResponse(await this.getPortfolioByUser.execute(userId));
   }
 
   @Get('accounts/:accountNumber/portfolio')
-  getByAccountNumber(@Param('accountNumber') accountNumber: string) {
-    return this.getPortfolioByAccount.execute(accountNumber);
+  async getByAccountNumber(@Param('accountNumber') accountNumber: string) {
+    return this.toResponse(await this.getPortfolioByAccount.execute(accountNumber));
+  }
+  private toResponse(portfolio: Awaited<ReturnType<GetPortfolioUseCase['execute']>>) {
+    return {
+      ...portfolio,
+      userId: portfolio.userId.toString(),
+      positions: portfolio.positions.map(position => ({ ...position, instrumentId: position.instrumentId.toString() })),
+    };
   }
 }
 

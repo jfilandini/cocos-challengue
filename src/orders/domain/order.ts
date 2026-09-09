@@ -1,3 +1,4 @@
+import { parseDatabaseId } from '../../shared/domain/database-id';
 import Decimal from 'decimal.js';
 import { isCashTransfer, isOrderSide, OrderSide } from '../../shared/domain/order-side';
 import { OrderStatus } from '../../shared/domain/order-status';
@@ -11,8 +12,8 @@ export class OrderPriceUnavailableError extends Error {}
 export class OrderCancellationError extends Error {}
 
 export interface CancelledOrder {
-  id: number;
-  userId: number;
+  id: bigint;
+  userId: bigint;
   status: OrderStatus.CANCELLED;
 }
 
@@ -21,7 +22,7 @@ export function assertCancellable(status: OrderStatus): void {
 }
 
 export interface OrderRequest {
-  instrumentId: number;
+  instrumentId: bigint;
   side: OrderSide;
   type: OrderType;
   size?: number;
@@ -30,8 +31,8 @@ export interface OrderRequest {
 }
 
 export interface OrderDraft {
-  userId: number;
-  instrumentId: number;
+  userId: bigint;
+  instrumentId: bigint;
   side: OrderSide;
   type: OrderType;
   size: number;
@@ -40,7 +41,7 @@ export interface OrderDraft {
 }
 
 export interface SubmittedOrder extends OrderDraft {
-  id: number;
+  id: bigint;
   datetime: string;
 }
 
@@ -55,17 +56,14 @@ function money(value: unknown, field: string): string {
   return amount.toFixed(2);
 }
 
-export function validateOrder(userId: number, body: unknown): OrderRequest {
-  if (!Number.isInteger(userId) || userId <= 0 || userId > 2147483647) throw new InvalidOrderError('Invalid userId');
+export function validateOrder(body: unknown): OrderRequest {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InvalidOrderError('Expected an order object');
   const input = body as Record<string, unknown>;
   if (Object.keys(input).some(key => !['instrumentId', 'side', 'type', 'size', 'amount', 'price'].includes(key))) {
     throw new InvalidOrderError('Unknown order field');
   }
-  const { instrumentId, side, type, size, amount, price } = input;
-  if (typeof instrumentId !== 'number' || !Number.isInteger(instrumentId) || instrumentId <= 0 || instrumentId > 2147483647) {
-    throw new InvalidOrderError('Invalid instrumentId');
-  }
+  const { side, type, size, amount, price } = input;
+  const instrumentId = parseDatabaseId(input.instrumentId);
   if (!isOrderSide(side)) throw new InvalidOrderError('Invalid order side');
   if (type !== OrderType.MARKET && type !== OrderType.LIMIT) throw new InvalidOrderError('type must be MARKET or LIMIT');
   if ((size !== undefined) === (amount !== undefined)) throw new InvalidOrderError('Send exactly one of size or amount');
@@ -88,7 +86,7 @@ export function validateOrder(userId: number, body: unknown): OrderRequest {
   };
 }
 
-export function decideOrder(userId: number, request: OrderRequest, close: string | null, movements: LedgerMovement[]): OrderDraft {
+export function decideOrder(userId: bigint, request: OrderRequest, close: string | null, movements: LedgerMovement[]): OrderDraft {
   const transfer = isCashTransfer(request.side);
   const rawPrice = transfer ? '1.00' : request.type === OrderType.LIMIT ? request.price : close;
   if (!rawPrice || !new Amount(rawPrice).isFinite() || !new Amount(rawPrice).gt(0)) {

@@ -6,7 +6,7 @@ import {
 } from '../dist/instruments/application/search-instruments.use-case.js';
 
 test('runs without NestJS or Prisma and passes normalized literal input to its port', async () => {
-  const results = [{ id: 1, ticker: 'TEST', name: 'Test stock', type: 'ACCIONES' }];
+  const results = [{ id: 1n, ticker: 'TEST', name: 'Test stock', type: 'ACCIONES' }];
   const useCase = new SearchInstrumentsUseCase({
     async search(query) {
       assert.equal(query, 'Te%_st');
