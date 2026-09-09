@@ -1,4 +1,4 @@
-import { readAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
+import { initializeAccountSnapshot, readAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
 import { Injectable } from '@nestjs/common';
 import { InstrumentType } from '../../../shared/domain/instrument-type';
 import { Currency } from '../../../shared/domain/currency';
@@ -26,7 +26,7 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
       const userId = users[0].id;
       const locked = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       if (!locked.length) return null;
-      const account = await readAccountSnapshot(tx, userId);
+      const account = await readAccountSnapshot(tx, userId) ?? await initializeAccountSnapshot(tx, userId);
       const instruments = await tx.instrument.findMany({
         where: { OR: [
           { id: { in: account.positions.map(position => BigInt(position.instrumentId)) } },

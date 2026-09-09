@@ -26,7 +26,7 @@ export class SubmitOrderUseCase {
       } else if (isInstrumentOrder(request.side) && instrument.type !== InstrumentType.ACCIONES) {
         throw new InvalidOrderError('BUY/SELL requires a stock instrument');
       }
-      const snapshot = await transaction.readSnapshot();
+      const snapshot = await transaction.readSnapshot() ?? await transaction.initializeSnapshot();
       const draft = generateOrderDraft(userId, request, instrument.close, snapshot);
       validateOrderSize(draft.size);
       return transaction.save(draft, request.transactionId);

@@ -2,7 +2,7 @@ import { Prisma } from '../../../generated/prisma/client';
 import { z } from 'zod';
 import { OrderIdempotencyConflictError } from '../../application/order-idempotency';
 import { toSnapshotOrder } from '../../../shared/infrastructure/database/snapshot-order.mapper';
-import { readAccountSnapshot, saveAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
+import { initializeAccountSnapshot, readAccountSnapshot, saveAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
 import { applyOrder, cancelPendingOrder } from '../../../shared/domain/account-snapshot';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
@@ -40,7 +40,7 @@ export class PrismaOrderRepository implements OrderRepository {
           return { id: order.id, status: order.status };
         },
         async cancel(id) {
-          const snapshot = await readAccountSnapshot(tx, userId);
+          const snapshot = await readAccountSnapshot(tx, userId) ?? await initializeAccountSnapshot(tx, userId);
           const order = await tx.order.findFirst({ where: { id, userId, status: OrderStatus.NEW }, include: { instrument: { select: { ticker: true, type: true } } } });
           if (!order) throw new OrderCancellationError('Only NEW orders can be cancelled');
           const next = cancelPendingOrder(snapshot, toSnapshotOrder(order));
@@ -56,11 +56,14 @@ export class PrismaOrderRepository implements OrderRepository {
           });
           return instrument ? { ticker: instrument.ticker, type: isInstrumentType(instrument.type) ? instrument.type : null, close: instrument.marketData[0]?.close?.toString() ?? null } : null;
         },
+        initializeSnapshot() {
+          return initializeAccountSnapshot(tx, userId);
+        },
         readSnapshot() {
           return readAccountSnapshot(tx, userId);
         },
         async save(draft, transactionId) {
-          const snapshot = await readAccountSnapshot(tx, userId);
+          const snapshot = await readAccountSnapshot(tx, userId) ?? await initializeAccountSnapshot(tx, userId);
           const datetime = new Date();
           const saved = await tx.order.create({ data: { ...draft, transactionId, datetime } });
           if (draft.status !== OrderStatus.REJECTED) await saveAccountSnapshot(tx, userId, applyOrder(snapshot, draft));
