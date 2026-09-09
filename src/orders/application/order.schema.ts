@@ -21,6 +21,7 @@ export function validateOrderSize(size: number): void {
 }
 
 const common = {
+  transactionId: z.string().trim().min(1).max(100),
   instrumentId: z.union([z.string(), z.number(), z.bigint()]).pipe(z.coerce.bigint()),
   size: orderSizeSchema.optional(),
   amount: money.optional(),
@@ -47,7 +48,9 @@ export const orderSchema = z.discriminatedUnion('type', [
     message: 'Cash transfers require whole pesos without fractional amounts', path: ['amount'],
   });
 
-export function validateOrder(body: unknown): OrderRequest {
+export type OrderSubmission = OrderRequest & { transactionId: string };
+
+export function validateOrder(body: unknown): OrderSubmission {
   const result = orderSchema.safeParse(body);
   if (!result.success) {
     throw new InvalidOrderError(result.error.issues.map(issue => `${issue.path.join('.') || 'order'}: ${issue.message}`).join('; '));

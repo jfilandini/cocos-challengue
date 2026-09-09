@@ -39,7 +39,9 @@ export interface OrderDraft {
   status: OrderStatus.NEW | OrderStatus.FILLED | OrderStatus.REJECTED;
 }
 
-export interface SubmittedOrder extends OrderDraft {
+export interface SubmittedOrder extends Omit<OrderDraft, 'status'> {
+  status: OrderStatus;
+  transactionId: string;
   id: bigint;
   datetime: string;
 }

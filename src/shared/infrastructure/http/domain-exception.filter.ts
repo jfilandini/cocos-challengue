@@ -1,3 +1,4 @@
+import { OrderIdempotencyConflictError } from '../../../orders/application/order-idempotency';
 import { InvalidDatabaseIdError } from '../../domain/database-validator-helper';
 import {
   ArgumentsHost,
@@ -67,7 +68,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
       return new NotFoundException(exception.message);
     }
 
-    if (exception instanceof AmbiguousPortfolioAccountError || exception instanceof OrderCancellationError) {
+    if (exception instanceof OrderIdempotencyConflictError || exception instanceof AmbiguousPortfolioAccountError || exception instanceof OrderCancellationError) {
       return new ConflictException(exception.message);
     }
 

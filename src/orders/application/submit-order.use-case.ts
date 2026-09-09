@@ -3,6 +3,7 @@ import { InstrumentType } from '../../shared/domain/instrument-type';
 import { Currency } from '../../shared/domain/currency';
 import { isCashTransfer, isInstrumentOrder } from '../../shared/domain/order-side';
 import { generateOrderDraft, InvalidOrderError, OrderResourceNotFoundError } from '../domain/order';
+import { OrderIdempotencyConflictError } from './order-idempotency';
 import { validateOrder, validateOrderSize } from './order.schema';
 import type { OrderRepository } from './ports/order.repository';
 
@@ -13,6 +14,9 @@ export class SubmitOrderUseCase {
     const userId = validateIdInput(userIdInput);
     const request = validateOrder(body);
     return this.orders.withUserLock(userId, async transaction => {
+      if (await transaction.existsByTransactionId(request.transactionId)) {
+        throw new OrderIdempotencyConflictError('transactionId already exists');
+      }
       const instrument = await transaction.findInstrument(request.instrumentId);
       if (!instrument) throw new OrderResourceNotFoundError('Instrument not found');
       if (isCashTransfer(request.side)) {
@@ -25,7 +29,7 @@ export class SubmitOrderUseCase {
       const snapshot = await transaction.readSnapshot();
       const draft = generateOrderDraft(userId, request, instrument.close, snapshot);
       validateOrderSize(draft.size);
-      return transaction.save(draft);
+      return transaction.save(draft, request.transactionId);
     });
   }
 }
