@@ -4,6 +4,9 @@ import { randomUUID } from 'node:crypto';
 import { after, before, test } from 'node:test';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../dist/app.module.js';
+import { PrismaOrderRepository } from '../dist/orders/infrastructure/persistence/prisma-order.repository.js';
+import { PrismaPortfolioRepository } from '../dist/portfolio/infrastructure/persistence/prisma-portfolio.repository.js';
+import { rebuildAccountSnapshot } from '../dist/shared/infrastructure/database/account-snapshot.store.js';
 import { PrismaService } from '../dist/shared/infrastructure/database/prisma.service.js';
 
 let app;
@@ -289,7 +292,97 @@ test('IDs above the JS safe-integer limit survive searches, orders, portfolios a
   assert.equal((await portfolio(id - 1n)).availableCash, '0.00');
   const search = await (await fetch(`${url}/instruments?query=BIGIDTEST`)).json();
   assert.equal(search[0].id, id.toString());
-  await prisma.order.create({ data: { id, userId: id, instrumentId: id, side: 'BUY', type: 'LIMIT', status: 'NEW', size: 1, price: '10', datetime: new Date() } });
+  const pending = await submit(id, { ...market, instrumentId: id.toString(), type: 'LIMIT', price: '10', size: 1 });
+  await prisma.order.update({ where: { id: BigInt(pending.id) }, data: { id } });
   await cancel(id - 1n, id, 404);
   assert.deepEqual(await cancel(id, id), { id: id.toString(), userId: id.toString(), status: 'CANCELLED' });
+});
+
+
+const snapshotState = row => ({ cash: row.cash.toString(), reservedCash: row.reservedCash.toString(), positions: row.positions });
+
+test('persisted snapshots match reconstruction after fills, reservations, rejections and cancellations', async () => {
+  const id = await user(1000);
+  await submit(id, { ...market, size: 2 });
+  await submit(id, { ...market, side: 'SELL', size: 1 });
+  const pending = await submit(id, { ...market, type: 'LIMIT', size: 1, price: '20' });
+  await cancel(id, pending.id);
+  await submit(id, { ...market, side: 'SELL', type: 'LIMIT', size: 1, price: '300' });
+  await submit(id, { ...transfer, side: 'CASH_OUT', size: 41 });
+  const stored = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
+  assert.equal(stored.cash.toString(), '700');
+  assert.equal(stored.reservedCash.toString(), '0');
+  assert.deepEqual(stored.positions, [{ instrumentId: '1', quantity: 1, reservedQuantity: 1, cost: '259', inconsistent: false }]);
+  await submit(id, { ...market, size: 100 });
+  await portfolio(id);
+  const unchanged = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
+  assert.deepEqual(unchanged, stored, 'Rejected orders and ordinary reads must not rewrite the snapshot');
+  for (let repeat = 0; repeat < 2; repeat++) {
+    await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${id} FOR UPDATE`;
+      await rebuildAccountSnapshot(tx, id);
+    });
+    assert.deepEqual(snapshotState(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } })), snapshotState(stored));
+  }
+});
+
+test('orders and snapshot changes roll back together on a failed transaction', async () => {
+  const id = await user(100);
+  await portfolio(id);
+  const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
+  const ordersBefore = await prisma.order.count({ where: { userId: id } });
+  const repository = new PrismaOrderRepository(prisma);
+  await assert.rejects(repository.withUserLock(id, async transaction => {
+    await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 40, price: '1' });
+    throw new Error('Simulated transaction failure');
+  }), /Simulated transaction failure/);
+  assert.equal(await prisma.order.count({ where: { userId: id } }), ordersBefore);
+  assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
+});
+
+test('bootstrap streams more than one ledger page; subsequent reads and submissions skip history', async () => {
+  const id = await user(0);
+  await prisma.order.createMany({ data: Array.from({ length: 1005 }, (_, index) => ({ userId: id, instrumentId: 66n, side: 'CASH_IN', type: 'MARKET', status: 'FILLED', size: 1, price: '1', datetime: new Date(index % 2 ? '2023-01-01' : '2023-01-02') })) });
+  let historyQueries = 0;
+  const tracked = prisma.$extends({ query: { order: { async findMany({ args, query }) { historyQueries++; return query(args); } } } });
+  const portfolios = new PrismaPortfolioRepository(tracked);
+  const first = await portfolios.findByUserId(id);
+  assert.equal(first.account.cash, '1005');
+  assert.equal(historyQueries, 2);
+  historyQueries = 0;
+  await portfolios.findByUserId(id);
+  await new PrismaOrderRepository(tracked).withUserLock(id, async transaction => {
+    assert.equal((await transaction.readSnapshot()).cash, '1005');
+    await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 5, price: '1' });
+  });
+  assert.equal((await portfolios.findByUserId(id)).account.cash, '1000');
+  assert.equal(historyQueries, 0);
+});
+
+test('fresh quotes revalue the portfolio without changing the stored snapshot', async () => {
+  const id = await user(100);
+  const instrument = await prisma.instrument.create({ data: { ticker: 'SNAPQUOTE', name: 'Snapshot quote test', type: 'ACCIONES' } });
+  createdInstruments.push(instrument.id);
+  const quote = await prisma.marketData.create({ data: { instrumentId: instrument.id, close: '10', previousClose: '10', date: new Date('2026-01-01') } });
+  await submit(id, { ...market, instrumentId: instrument.id.toString() });
+  const stored = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
+  await prisma.marketData.update({ where: { id: quote.id }, data: { close: '20' } });
+  const result = await portfolio(id);
+  assert.equal(result.totalValue, '120.00');
+  assert.equal(result.positions.find(p => p.ticker === 'SNAPQUOTE').dailyReturnPercent, '100.00');
+  assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), stored);
+});
+
+test('a failed snapshot write rolls back order creation and cancellation', async () => {
+  const id = await user(100);
+  const pending = await submit(id, { ...market, size: 1, type: 'LIMIT', price: '20' });
+  const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
+  const count = await prisma.order.count({ where: { userId: id } });
+  const failing = prisma.$extends({ query: { accountSnapshot: { upsert() { throw new Error('Snapshot write failed'); } } } });
+  const repository = new PrismaOrderRepository(failing);
+  await assert.rejects(repository.withUserLock(id, transaction => transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 10, price: '1' })), /Snapshot write failed/);
+  assert.equal(await prisma.order.count({ where: { userId: id } }), count);
+  await assert.rejects(repository.withUserLock(id, transaction => transaction.cancel(BigInt(pending.id))), /Snapshot write failed/);
+  assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: BigInt(pending.id) } })).status, 'NEW');
+  assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
 });

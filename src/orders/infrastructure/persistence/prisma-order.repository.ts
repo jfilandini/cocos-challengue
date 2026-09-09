@@ -1,9 +1,11 @@
-import { toLedgerMovement } from '../../../shared/infrastructure/database/ledger-movement.mapper';
+import { toSnapshotOrder } from '../../../shared/infrastructure/database/snapshot-order.mapper';
+import { readAccountSnapshot, saveAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
+import { applyOrder, cancelPendingOrder } from '../../../shared/domain/account-snapshot';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
 import { isInstrumentType } from '../../../shared/domain/instrument-type';
 import { isOrderStatus, OrderStatus } from '../../../shared/domain/order-status';
-import { PortfolioDataError } from '../../../shared/domain/ledger';
+import { PortfolioDataError } from '../../../shared/domain/account-snapshot';
 import { OrderCancellationError, OrderResourceNotFoundError } from '../../domain/order';
 import type { OrderRepository, OrderTransaction } from '../../application/ports/order.repository';
 
@@ -23,8 +25,13 @@ export class PrismaOrderRepository implements OrderRepository {
           return { id: order.id, status: order.status };
         },
         async cancel(id) {
+          const snapshot = await readAccountSnapshot(tx, userId);
+          const order = await tx.order.findFirst({ where: { id, userId, status: OrderStatus.NEW }, include: { instrument: { select: { ticker: true, type: true } } } });
+          if (!order) throw new OrderCancellationError('Only NEW orders can be cancelled');
+          const next = cancelPendingOrder(snapshot, toSnapshotOrder(order));
           const result = await tx.order.updateMany({ where: { id, userId, status: OrderStatus.NEW }, data: { status: OrderStatus.CANCELLED } });
           if (result.count !== 1) throw new OrderCancellationError('Only NEW orders can be cancelled');
+          await saveAccountSnapshot(tx, userId, next);
           return { id, userId, status: OrderStatus.CANCELLED };
         },
         async findInstrument(id) {
@@ -34,20 +41,17 @@ export class PrismaOrderRepository implements OrderRepository {
           });
           return instrument ? { ticker: instrument.ticker, type: isInstrumentType(instrument.type) ? instrument.type : null, close: instrument.marketData[0]?.close?.toString() ?? null } : null;
         },
-        async readMovements() {
-          const orders = await tx.order.findMany({
-            where: { userId, status: { in: [OrderStatus.FILLED, OrderStatus.NEW] } },
-            orderBy: [{ datetime: 'asc' }, { id: 'asc' }],
-            include: { instrument: { select: { ticker: true, type: true } } },
-          });
-          return orders.map(toLedgerMovement);
+        readSnapshot() {
+          return readAccountSnapshot(tx, userId);
         },
         async save(draft) {
+          const snapshot = await readAccountSnapshot(tx, userId);
           const datetime = new Date();
           const saved = await tx.order.create({ data: { ...draft, datetime } });
+          if (draft.status !== OrderStatus.REJECTED) await saveAccountSnapshot(tx, userId, applyOrder(snapshot, draft));
           return { ...draft, id: saved.id, datetime: datetime.toISOString() };
         },
       });
-    }, { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 10000 });
+    }, { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 30000 });
   }
 }

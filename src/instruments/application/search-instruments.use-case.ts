@@ -12,7 +12,7 @@ export class SearchInstrumentsUseCase {
   constructor(private readonly instruments: InstrumentRepository) {}
 
   execute(query: unknown): Promise<Instrument[]> {
-    if (typeof query !== 'string' || !query.trim() || query.trim().length > 255) {
+    if (typeof query !== 'string' || !query.trim()) {
       throw new InvalidInstrumentSearchError();
     }
 

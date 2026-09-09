@@ -1,6 +1,8 @@
+import { rebuildSnapshot } from '../dist/shared/domain/account-snapshot.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decideOrder, InvalidOrderError, validateOrder } from '../dist/orders/domain/order.js';
+import { generateOrderDraft, InvalidOrderError } from '../dist/orders/domain/order.js';
+import { validateOrder, validateOrderSize } from '../dist/orders/application/order.schema.js';
 import { OrderSide } from '../dist/shared/domain/order-side.js';
 import { OrderStatus } from '../dist/shared/domain/order-status.js';
 import { OrderType } from '../dist/shared/domain/order-type.js';
@@ -10,32 +12,64 @@ const deposit = { instrumentId: 66n, side: OrderSide.CASH_IN, type: OrderType.MA
 
 test('decimal affordability is exact and amount leaves the unspent remainder available', () => {
   const request = validateOrder({ instrumentId: 1n, side: OrderSide.BUY, type: OrderType.MARKET, amount: '1.00' });
-  const result = decideOrder(1n, request, '0.10', [deposit]);
+  const result = generateOrderDraft(1n, request, '0.10', rebuildSnapshot([deposit]));
   assert.equal(result.size, 10);
   assert.equal(result.status, OrderStatus.FILLED);
-  const remainder = decideOrder(1n, request, '0.30', [deposit]);
+  const remainder = generateOrderDraft(1n, request, '0.30', rebuildSnapshot([deposit]));
   assert.equal(remainder.size, 3);
   assert.equal(remainder.status, OrderStatus.FILLED);
 });
 
 test('LIMIT rejection uses its specified price even without a quote', () => {
   const request = validateOrder({ ...buy, type: OrderType.LIMIT, price: '1.01' });
-  assert.equal(decideOrder(1n, request, null, [deposit]).status, OrderStatus.REJECTED);
+  assert.equal(generateOrderDraft(1n, request, null, rebuildSnapshot([deposit])).status, OrderStatus.REJECTED);
 });
 
 test('SELL by amount floors the quantity at market price', () => {
   const holding = { ...deposit, instrumentId: 1n, side: OrderSide.BUY, size: 3, price: '0.10' };
   const request = validateOrder({ instrumentId: 1n, side: OrderSide.SELL, type: OrderType.MARKET, amount: '0.29' });
-  const result = decideOrder(1n, request, '0.10', [deposit, holding]);
+  const result = generateOrderDraft(1n, request, '0.10', rebuildSnapshot([deposit, holding]));
   assert.equal(result.size, 2);
   assert.equal(result.status, OrderStatus.FILLED);
 });
 
-test('schema bounds and nonfinite monetary input are rejected before persistence', () => {
-  for (const price of ['100000000.00', 'Infinity', 'NaN', 0, null]) {
+test('quantity bounds and invalid monetary input are rejected before persistence', () => {
+  for (const price of ['Infinity', 'NaN', 'abc', '', '-1', 0, null]) {
     assert.throws(() => validateOrder({ ...buy, type: OrderType.LIMIT, price }), InvalidOrderError);
   }
-  assert.throws(() => validateOrder({ ...buy, size: 2147483648 }), InvalidOrderError);
+  assert.equal(validateOrder({ ...buy, size: 2147483647 }).size, 2147483647);
+  assert.throws(() => validateOrder({ ...buy, size: 2147483648 }), /Order size must be at most 2147483647/);
   const request = validateOrder({ instrumentId: 1n, side: OrderSide.BUY, type: OrderType.MARKET, amount: '2147483648.00' });
-  assert.throws(() => decideOrder(1n, request, '1.00', [deposit]), InvalidOrderError);
+  const draft = generateOrderDraft(1n, request, '1.00', rebuildSnapshot([deposit]));
+  assert.throws(() => validateOrderSize(draft.size), /Order size must be at most 2147483647/);
+});
+
+
+test('order schema normalizes money and IDs while accepting every supported order variant', () => {
+  for (const side of Object.values(OrderSide)) {
+    for (const quantity of [{ size: 2 }, { amount: '2' }]) {
+      const result = validateOrder({ instrumentId: '9007199254740993', side, type: OrderType.MARKET, ...quantity });
+      assert.equal(result.instrumentId, 9007199254740993n);
+      if (quantity.amount) assert.equal(result.amount, '2.00');
+    }
+  }
+  for (const side of [OrderSide.BUY, OrderSide.SELL]) {
+    const result = validateOrder({ ...buy, side, type: OrderType.LIMIT, price: 12.5 });
+    assert.equal(result.price, '12.50');
+  }
+});
+
+test('order schema rejects conflicting fields, invalid types and fractional transfers', () => {
+  const incoming = { instrumentId: '66', side: OrderSide.CASH_IN, type: OrderType.MARKET, amount: '1.50' };
+  for (const body of [
+    null, [], {}, { ...buy, instrumentId: null }, { ...buy, instrumentId: 'abc' },
+    { ...buy, size: undefined }, { ...buy, amount: '10' }, { ...buy, size: '1' },
+    { ...buy, size: 0 }, { ...buy, size: 1.5 }, { ...buy, side: 'OTHER' },
+    { ...buy, type: 'OTHER' }, { ...buy, status: 'FILLED' },
+    { ...buy, price: '1' }, { ...buy, price: null }, { ...buy, type: OrderType.LIMIT },
+    { ...buy, type: OrderType.LIMIT, price: '1.001' }, incoming,
+    { ...incoming, side: OrderSide.CASH_OUT },
+    { ...incoming, amount: 'abc' }, { ...incoming, amount: '1.001' },
+    { ...incoming, amount: '1', type: OrderType.LIMIT, price: '1' },
+  ]) assert.throws(() => validateOrder(body), InvalidOrderError);
 });

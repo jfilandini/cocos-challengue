@@ -1,12 +1,11 @@
-import { calculateLedger, PortfolioDataError, type LedgerMovement } from '../../shared/domain/ledger';
+import { PortfolioDataError, type AccountSnapshot } from '../../shared/domain/account-snapshot';
 import Decimal from 'decimal.js';
 import { InstrumentType } from '../../shared/domain/instrument-type';
 import { Currency } from '../../shared/domain/currency';
 
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 
-export type { LedgerMovement as PortfolioMovement } from '../../shared/domain/ledger';
-export { PortfolioDataError } from '../../shared/domain/ledger';
+export { PortfolioDataError } from '../../shared/domain/account-snapshot';
 
 export interface PortfolioInstrument {
   id: bigint;
@@ -18,18 +17,20 @@ export interface PortfolioInstrument {
 }
 
 export interface PortfolioSnapshot {
-  movements: LedgerMovement[];
+  account: AccountSnapshot;
   instruments: PortfolioInstrument[];
 }
 
 export class PortfolioPriceUnavailableError extends Error {}
 
 export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) {
-  const { cash, reservedCash, positions, reservedShares } = calculateLedger(snapshot.movements);
-
+  const cash = new Amount(snapshot.account.cash);
+  const reservedCash = new Amount(snapshot.account.reservedCash);
   let total = cash;
   const instruments = new Map(snapshot.instruments.map(instrument => [instrument.id, instrument]));
-  const stockPositions = [...positions.entries()].filter(([, p]) => p.quantity !== 0).map(([id, position]) => {
+  const stockPositions = snapshot.account.positions.filter(p => p.quantity !== 0).map(position => {
+    const id = BigInt(position.instrumentId);
+    const cost = new Amount(position.cost);
     const instrument = instruments.get(id);
     if (!instrument || instrument.close === null || !new Amount(instrument.close).gt(0)) {
       throw new PortfolioPriceUnavailableError(`Latest price unavailable for instrument ${id}`);
@@ -37,7 +38,7 @@ export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) 
     const close = new Amount(instrument.close);
     const marketValue = close.mul(position.quantity);
     total = total.plus(marketValue);
-    const reserved = reservedShares.get(id) ?? 0;
+    const reserved = position.reservedQuantity;
     return {
       type: InstrumentType.ACCIONES,
       instrumentId: id,
@@ -49,8 +50,8 @@ export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) 
       price: close.toFixed(2),
       priceDate: instrument.date,
       marketValue: marketValue.toFixed(2),
-      totalReturnPercent: position.inconsistent || !position.cost.gt(0)
-        ? null : marketValue.minus(position.cost).div(position.cost).mul(100).toFixed(2),
+      totalReturnPercent: position.inconsistent || !cost.gt(0)
+        ? null : marketValue.minus(cost).div(cost).mul(100).toFixed(2),
       dailyReturnPercent: instrument.previousClose !== null && new Amount(instrument.previousClose).gt(0)
         ? close.minus(instrument.previousClose).div(instrument.previousClose).mul(100).toFixed(2) : null,
       inconsistentHistory: position.inconsistent,

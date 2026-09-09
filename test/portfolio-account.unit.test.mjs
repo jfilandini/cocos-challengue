@@ -1,3 +1,4 @@
+import { rebuildSnapshot } from '../dist/shared/domain/account-snapshot.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { GetPortfolioByAccountNumberUseCase, InvalidPortfolioAccountError, PortfolioAccountNotFoundError } from '../dist/portfolio/application/get-portfolio-by-account-number.use-case.js';
@@ -8,7 +9,7 @@ test('account lookup trims whitespace but preserves leading zeros and uses the r
   const useCase = new GetPortfolioByAccountNumberUseCase({
     async findByAccountNumber(account) {
       assert.equal(account, '00123');
-      return { userId: 7n, movements: [], instruments: [] };
+      return { userId: 7n, account: rebuildSnapshot([]), instruments: [] };
     },
   });
   assert.equal((await useCase.execute(' 00123 ')).userId, 7n);

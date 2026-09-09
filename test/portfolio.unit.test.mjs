@@ -1,4 +1,5 @@
-import { InvalidDatabaseIdError } from '../dist/shared/domain/database-id.js';
+import { rebuildSnapshot } from '../dist/shared/domain/account-snapshot.js';
+import { InvalidDatabaseIdError } from '../dist/shared/domain/database-validator-helper.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { calculatePortfolio, PortfolioPriceUnavailableError } from '../dist/portfolio/domain/portfolio.js';
@@ -7,7 +8,7 @@ import { GetPortfolioUseCase, PortfolioUserNotFoundError } from '../dist/portfol
 const movement = (side, size, price = '1', overrides = {}) => ({ instrumentId: side.startsWith('CASH') ? 66n : 1n, side, size, price, type: 'MARKET', status: 'FILLED', ...overrides });
 const instrument = { id: 1n, ticker: 'TEST', name: 'Test', close: '20', previousClose: '16', date: '2023-07-14' };
 const ars = { id: 66n, ticker: 'ARS', name: 'PESOS', close: null, previousClose: null, date: null };
-const portfolio = (movements, instruments = [instrument]) => calculatePortfolio(1n, { movements, instruments: [...instruments, ars] });
+const portfolio = (movements, instruments = [instrument]) => calculatePortfolio(1n, { account: rebuildSnapshot(movements), instruments: [...instruments, ars] });
 
 test('weighted cost survives partial sales; pending orders reserve resources without changing holdings', () => {
   const result = portfolio([
@@ -57,7 +58,7 @@ test('decimal amounts do not accumulate binary floating-point errors', () => {
 });
 
 test('use case distinguishes missing users from empty portfolios and rejects invalid ids', async () => {
-  const empty = new GetPortfolioUseCase({ async findByUserId() { return { movements: [], instruments: [] }; } });
+  const empty = new GetPortfolioUseCase({ async findByUserId() { return { account: rebuildSnapshot([]), instruments: [] }; } });
   assert.equal((await empty.execute(2)).totalValue, '0.00');
   const missing = new GetPortfolioUseCase({ async findByUserId() { return null; } });
   await assert.rejects(missing.execute(99), PortfolioUserNotFoundError);

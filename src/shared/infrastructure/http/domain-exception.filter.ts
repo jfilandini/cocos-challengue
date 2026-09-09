@@ -1,4 +1,4 @@
-import { InvalidDatabaseIdError } from '../../domain/database-id';
+import { InvalidDatabaseIdError } from '../../domain/database-validator-helper';
 import {
   ArgumentsHost,
   BadRequestException,

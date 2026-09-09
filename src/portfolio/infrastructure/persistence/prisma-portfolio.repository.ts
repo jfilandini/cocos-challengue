@@ -1,7 +1,5 @@
-import { toLedgerMovement } from '../../../shared/infrastructure/database/ledger-movement.mapper';
+import { readAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
 import { Injectable } from '@nestjs/common';
-import { OrderSide } from '../../../shared/domain/order-side';
-import { OrderStatus } from '../../../shared/domain/order-status';
 import { InstrumentType } from '../../../shared/domain/instrument-type';
 import { Currency } from '../../../shared/domain/currency';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
@@ -26,15 +24,12 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
       if (!users.length) return null;
       if (users.length > 1) throw new AmbiguousPortfolioAccountError('Account number matches multiple users');
       const userId = users[0].id;
-      const orders = await tx.order.findMany({
-        where: { userId, status: { in: [OrderStatus.FILLED, OrderStatus.NEW] } },
-        orderBy: [{ datetime: 'asc' }, { id: 'asc' }],
-        include: { instrument: { select: { ticker: true, type: true } } },
-      });
-      const movements = orders.map(toLedgerMovement);
+      const locked = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
+      if (!locked.length) return null;
+      const account = await readAccountSnapshot(tx, userId);
       const instruments = await tx.instrument.findMany({
         where: { OR: [
-          { id: { in: [...new Set(movements.filter(m => m.side === OrderSide.BUY || m.side === OrderSide.SELL).map(m => m.instrumentId))] } },
+          { id: { in: account.positions.map(position => BigInt(position.instrumentId)) } },
           { ticker: Currency.ARS, type: InstrumentType.MONEDA },
         ] },
         select: {
@@ -44,7 +39,7 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
       });
       return {
         userId,
-        movements,
+        account,
         instruments: instruments.map(({ id, ticker, name, marketData }) => ({
           id, ticker, name,
           close: marketData[0]?.close?.toString() ?? null,
@@ -52,6 +47,6 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
           date: marketData[0]?.date?.toISOString().slice(0, 10) ?? null,
         })),
       };
-    }, { isolationLevel: 'RepeatableRead' });
+    }, { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 30000 });
   }
 }

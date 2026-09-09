@@ -14,3 +14,7 @@ export function isOrderSide(value: unknown): value is OrderSide {
 export function isCashTransfer(side: OrderSide): boolean {
   return side === OrderSide.CASH_IN || side === OrderSide.CASH_OUT;
 }
+
+export function isInstrumentOrder(side: OrderSide): boolean {
+  return side === OrderSide.BUY || side === OrderSide.SELL;
+}

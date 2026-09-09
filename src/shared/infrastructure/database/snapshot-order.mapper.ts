@@ -1,20 +1,20 @@
 import { Currency } from '../../domain/currency';
 import { InstrumentType } from '../../domain/instrument-type';
-import { PortfolioDataError, type LedgerMovement } from '../../domain/ledger';
-import { isOrderSide, OrderSide } from '../../domain/order-side';
+import { PortfolioDataError, type SnapshotOrder } from '../../domain/account-snapshot';
+import { isCashTransfer, isOrderSide } from '../../domain/order-side';
 import { OrderStatus } from '../../domain/order-status';
 import { isOrderType } from '../../domain/order-type';
 import type { Order } from '../../../generated/prisma/client';
 
 type MovementRow = Order & { instrument: { ticker: string | null; type: string | null } | null };
 
-export function toLedgerMovement(order: MovementRow): LedgerMovement {
+export function toSnapshotOrder(order: MovementRow): SnapshotOrder {
   if (order.instrumentId === null || order.size === null || order.price === null || order.datetime === null ||
       !isOrderSide(order.side) || !isOrderType(order.type) ||
       (order.status !== OrderStatus.FILLED && order.status !== OrderStatus.NEW)) {
     throw new PortfolioDataError(`Invalid movement ${order.id}`);
   }
-  const cash = order.side === OrderSide.CASH_IN || order.side === OrderSide.CASH_OUT;
+  const cash = isCashTransfer(order.side);
   if (cash ? order.instrument?.ticker !== Currency.ARS || order.instrument.type !== InstrumentType.MONEDA
     : order.instrument?.type !== InstrumentType.ACCIONES) {
     throw new PortfolioDataError(`Invalid instrument for movement ${order.id}`);
@@ -28,4 +28,3 @@ export function toLedgerMovement(order: MovementRow): LedgerMovement {
     status: order.status,
   };
 }
-

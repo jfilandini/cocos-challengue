@@ -1,4 +1,4 @@
-import { parseDatabaseId } from '../../shared/domain/database-id';
+import { validateIdInput } from '../../shared/domain/database-validator-helper';
 import { calculatePortfolio } from '../domain/portfolio';
 import type { PortfolioRepository } from './ports/portfolio.repository';
 
@@ -9,7 +9,7 @@ export class GetPortfolioUseCase {
   constructor(private readonly portfolios: PortfolioRepository) {}
 
   async execute(userIdInput: unknown) {
-    const userId = parseDatabaseId(userIdInput);
+    const userId = validateIdInput(userIdInput);
     const snapshot = await this.portfolios.findByUserId(userId);
     if (!snapshot) throw new PortfolioUserNotFoundError('User not found');
     return calculatePortfolio(userId, snapshot);

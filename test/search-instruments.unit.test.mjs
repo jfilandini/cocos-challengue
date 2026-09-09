@@ -24,19 +24,19 @@ test('rejects invalid input before accessing persistence', () => {
     },
   });
 
-  for (const query of [undefined, null, 42, {}, ['A', 'B'], '', '  ', 'a'.repeat(256)]) {
+  for (const query of [undefined, null, 42, {}, ['A', 'B'], '', '  ']) {
     assert.throws(() => useCase.execute(query), InvalidInstrumentSearchError);
   }
 });
 
-test('accepts the maximum search length after trimming', async () => {
+test('accepts search terms longer than 255 characters after trimming', async () => {
   const useCase = new SearchInstrumentsUseCase({
     async search(query) {
-      assert.equal(query.length, 255);
+      assert.equal(query.length, 256);
       return [];
     },
   });
-  assert.deepEqual(await useCase.execute(` ${'a'.repeat(255)} `), []);
+  assert.deepEqual(await useCase.execute(` ${'a'.repeat(256)} `), []);
 });
 
 test('propagates persistence failures without treating them as invalid input', async () => {

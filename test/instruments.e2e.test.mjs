@@ -54,9 +54,13 @@ test('treats SQL pattern characters and quotes as literal input', async () => {
   }
 });
 
-test('rejects missing, blank, repeated, and oversized search terms', async () => {
-  for (const query of ['', '?query=', '?query=%20%20', '?query=GGAL&query=BMA', `?query=${'a'.repeat(256)}`]) {
+test('rejects missing, blank, and repeated search terms', async () => {
+  for (const query of ['', '?query=', '?query=%20%20', '?query=GGAL&query=BMA']) {
     const response = await fetch(`${baseUrl}/instruments${query}`);
     assert.equal(response.status, 400);
   }
+});
+
+test('accepts search terms longer than 255 characters', async () => {
+  assert.deepEqual(await search('a'.repeat(256)), []);
 });

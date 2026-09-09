@@ -10,6 +10,7 @@
   "scripts": {
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix --max-warnings=0",
+    "snapshots:rebuild": "npm run build && node --env-file-if-exists=.env scripts/rebuild-snapshots.mjs",
     "test:unit": "npm run build && node --test test/*.unit.test.mjs",
     "test": "npm run build && node --env-file=.env.test.example --env-file-if-exists=.env.test --test test/*.test.mjs",
     "test:orders": "npm run build && node --env-file=.env.test.example --env-file-if-exists=.env.test --test test/orders*.test.mjs",
@@ -38,7 +39,8 @@
     "pg": "^8.23.0",
     "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
