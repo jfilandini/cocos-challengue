@@ -122,6 +122,12 @@ src/instruments/
   infrastructure/http/                        Adaptador de entrada HTTP
   infrastructure/persistence/                 Adaptador de salida Prisma
   instruments.module.ts                       Composición e inyección de dependencias
+
+src/snapshot/
+  domain/account-snapshot.ts                   Modelos y funciones puras de transición de estado
+  application/ports/account-snapshot.repository.ts Puerto de salida del repositorio
+  infrastructure/persistence/                  Adaptador Prisma y mapper de órdenes
+  snapshot.module.ts                           Composición e inyección de dependencias
 ```
 
 El controlador invoca el caso de uso y convierte errores de entrada en HTTP 400. El caso de uso depende del contrato `InstrumentRepository`; el módulo NestJS lo conecta con `PrismaInstrumentRepository` mediante una fábrica. El adaptador Prisma implementa la búsqueda y el escape de patrones SQL, devolviendo modelos propios. La misma operación puede invocarse desde otro adaptador sin depender de HTTP.
@@ -142,13 +148,13 @@ El esquema se inicializa mediante `docker/postgres/database.sql`. En esta etapa 
 
 El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
 
-La prueba funcional de envío de órdenes está en `test/orders.e2e.test.mjs` y usa una base de pruebas aislada.
+La prueba funcional de envío de órdenes está en `test/e2e/orders.e2e.test.mjs` y usa una base de pruebas aislada.
 
 ## Portfolio
 
 También se puede consultar mediante `GET /accounts/:accountNumber/portfolio`, por ejemplo `/accounts/10001/portfolio`. Devuelve el mismo contrato que la búsqueda por usuario, incluido el `userId` resuelto. `findByAccountNumber` usa igualdad exacta y mantiene los ceros iniciales; solo quita espacios al inicio y al final. Acepta de 1 a 20 caracteres, acorde con la columna original.
 
-La resolución de la cuenta y la lectura del portfolio comparten la misma transacción. Una cuenta inexistente devuelve 404, una entrada inválida 400 y números de cuenta duplicados 409. El SQL original no garantiza unicidad: se detecta la ambigüedad sin elegir arbitrariamente un usuario ni modificar el esquema.
+La resolución del portfolio por número de cuenta busca el usuario correspondiente sin bloqueos. Una cuenta inexistente devuelve 404, una entrada inválida 400 y números de cuenta duplicados 409. El SQL original no garantiza unicidad: se detecta la ambigüedad sin elegir arbitrariamente un usuario ni modificar el esquema.
 
 ```sh
 curl 'http://localhost:3001/users/1/portfolio'
@@ -165,7 +171,8 @@ El puerto debe coincidir con `API_PORT`. La respuesta incluye `totalValue`, `cas
 - `totalReturnPercent` es el rendimiento no realizado de la posición abierta: `(valor de mercado − costo remanente) / costo remanente × 100`. Las compras suman costo; las ventas descuentan cantidad al costo promedio vigente, sin usar el precio de venta como costo. Una posición cerrada se omite y al reabrirse inicia un nuevo costo. No incluye ganancias realizadas, comisiones ni impuestos.
 - `dailyReturnPercent = (close − previousClose) / previousClose × 100`; devuelve `null` si falta el cierre anterior o no es mayor que cero.
 - Sin cotización válida para una posición abierta se responde HTTP 503, evitando devolver una valuación incompleta. Movimientos relevantes incompletos o inválidos producen HTTP 422. Usuario inexistente devuelve 404 e identificador inválido devuelve 400.
-- El portfolio lee el snapshot bajo el mismo bloqueo de usuario que las órdenes, con aislamiento `ReadCommitted`. Las cotizaciones se obtienen en una consulta posterior dentro de esa transacción. No reproduce el historial en cada consulta.
+- **Lectura no bloqueante (*Lock-free Read*):** El portfolio lee el snapshot existente y las cotizaciones mediante consultas directas sin bloqueos pesimistas ni transacciones de escritura, aprovechando el aislamiento MVCC de PostgreSQL. Esto garantiza que las consultas de portfolio nunca bloqueen ni sean bloqueadas por el envío concurrente de órdenes, y que múltiples lecturas corran en paralelo.
+- **Inicialización diferida (*Lazy fallback*):** Únicamente en caso de que el snapshot aún no exista en la base de datos (`null`), se adquiere un bloqueo pesimista `SELECT ... FOR UPDATE` sobre la fila del usuario para reconstruirlo a partir del historial de órdenes y guardarlo de forma atómica y consistente por primera vez.
 
 El usuario 1 del SQL original tiene `cashBalance = "753000.00"`, `reservedCash = "125500.00"`, `availableCash = "627500.00"` y `totalValue = "889756.00"`. Incluye BMA con −10 acciones: se conserva el saldo firmado y su valor de mercado negativo, con `inconsistentHistory: true` y `totalReturnPercent: null`. El total refleja literalmente ese historial inconsistente. Los usuarios 2, 3 y 4 tienen valores cero y posiciones vacías.
 
@@ -293,10 +300,11 @@ Desde la interfaz web de Swagger es posible consultar y probar los endpoints de:
 Para evitar recorrer y recalcular el historial de órdenes del usuario en cada consulta de portfolio o validación de recursos, una vez inicializado el snapshot:
 
 - **Registro de órdenes como fuente de verdad (`orders`):** Conserva las órdenes y su estado actual (`FILLED`, `NEW`, `REJECTED`, `CANCELLED`). Las cancelaciones actualizan el estado de las órdenes pendientes; no se conserva un historial inmutable de eventos ni la fecha de cada transición. Las órdenes ejecutadas no se modifican desde la API.
-- **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`settledcash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes.
-- **Actualización transaccional incremental:** Las órdenes ejecutadas modifican saldos y posiciones, las pendientes reservan recursos y las cancelaciones liberan reservas, dentro de la misma transacción ACID que persiste la orden o su cambio de estado. Las órdenes rechazadas no alteran esos recursos.
-- **Costo de las operaciones habituales:** El snapshot evita reproducir el historial de órdenes en cada consulta o validación. El trabajo sigue dependiendo de las posiciones y cotizaciones involucradas: se recorren y ordenan posiciones, y sus datos se leen y persisten como JSON. Por eso, consultar el portfolio o procesar una orden no tiene un costo general O(1).
-- **Reconstrucción:** Si falta el snapshot, se inicializa desde las órdenes del usuario. Ante modificaciones manuales o mantenimiento, el estado actual puede regenerarse mediante `npm run snapshots:rebuild`, que vuelve a procesar el historial. Esto no permite reconstruir las reservas a una fecha pasada, porque no se conservan todas las transiciones de estado.
+- **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`settledcash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes. Se gestiona desde su propio módulo [`src/snapshot/`](src/snapshot).
+- **Actualización transaccional incremental (Escritura con bloqueo pesimista):** Las órdenes ejecutadas modifican saldos y posiciones, las pendientes reservan recursos y las cancelaciones liberan reservas, dentro de la misma transacción ACID que persiste la orden o su cambio de estado. Utiliza `SELECT ... FOR UPDATE` sobre el usuario para serializar la validación de fondos y evitar condiciones de carrera (*lost updates*). Las órdenes rechazadas no alteran esos recursos.
+- **Lectura desacoplada y no bloqueante (*Lock-free Read*):** Las consultas de portfolio leen la proyección materializada directamente sin abrir transacciones de bloqueo pesimista (`FOR UPDATE`), permitiendo lecturas concurrentes y maximizando el throughput sin interferir con los envíos de órdenes.
+- **Costo de las operaciones habituales:** El snapshot evita reproducir el historial de órdenes en cada consulta o validación. El trabajo sigue dependiendo de las posiciones y cotizaciones involucradas: se recorren y ordenan posiciones, y sus datos se leen y persisten como JSON.
+- **Reconstrucción:** Si falta el snapshot, se inicializa automáticamente bajo bloqueo seguro desde las órdenes del usuario. Ante modificaciones manuales o mantenimiento, el estado actual puede regenerarse mediante `npm run snapshots:rebuild`, que vuelve a procesar el historial. Esto no permite reconstruir las reservas a una fecha pasada, porque no se conservan todas las transiciones de estado.
 
 
 ## Deduplicación e Idempotencia de Órdenes
