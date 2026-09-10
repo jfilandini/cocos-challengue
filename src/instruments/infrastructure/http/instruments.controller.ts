@@ -1,7 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SearchInstrumentsUseCase } from '../../application/search-instruments.use-case';
-import { InstrumentResponseDto } from './dto/instrument-response.dto';
+import { InstrumentSearchPageDto } from './dto/instrument-search-page.dto';
 import { ErrorResponseDto } from '../../../shared/infrastructure/http/dto/error-response.dto';
 
 @ApiTags('Instruments')
@@ -21,19 +21,21 @@ export class InstrumentsController {
     required: true,
     example: 'ypf',
   })
+  @ApiQuery({ name: 'page', required: false, schema: { type: 'integer', minimum: 1, default: 1 } })
+  @ApiQuery({ name: 'limit', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } })
   @ApiResponse({
     status: 200,
     description: 'Listado de activos encontrados ordenados alfabéticamente por ticker',
-    type: [InstrumentResponseDto],
+    type: InstrumentSearchPageDto,
   })
   @ApiResponse({
     status: 400,
-    description: 'Parámetro query ausente, vacío o inválido',
+    description: 'Parámetro query, page o limit inválido',
     type: ErrorResponseDto,
   })
-  async search(@Query('query') query: unknown) {
-    const instruments = await this.searchInstruments.execute(query);
-    return instruments.map(instrument => ({ ...instrument, id: instrument.id.toString() }));
+  async search(@Query('query') query: unknown, @Query('page') page: unknown, @Query('limit') limit: unknown) {
+    const result = await this.searchInstruments.execute(query, page, limit);
+    return { ...result, items: result.items.map(instrument => ({ ...instrument, id: instrument.id.toString() })) };
   }
 }
 

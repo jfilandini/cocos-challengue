@@ -1,4 +1,3 @@
-import { OrderIdempotencyConflictError } from '../../../orders/application/order-idempotency';
 import { InvalidDatabaseIdError } from '../../domain/database-validator-helper';
 import {
   ArgumentsHost,
@@ -18,7 +17,7 @@ interface HttpResponse {
   json(body: unknown): void;
 }
 import { InvalidInstrumentSearchError } from '../../../instruments/application/search-instruments.use-case';
-import { InvalidOrderError, OrderCancellationError, OrderResourceNotFoundError, OrderPriceUnavailableError } from '../../../orders/domain/order';
+import { InvalidOrderError, OrderCancellationError, OrderIdempotencyConflictError, OrderPriceUnavailableError, OrderResourceNotFoundError } from '../../../orders/domain/order';
 import {
   InvalidPortfolioUserError,
   PortfolioUserNotFoundError,

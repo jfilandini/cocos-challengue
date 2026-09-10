@@ -1,5 +1,5 @@
 import { validateIdInput } from '../../shared/domain/database-validator-helper';
-import { isCancellable, OrderResourceNotFoundError } from '../domain/order';
+import { assertCancellable, OrderResourceNotFoundError } from '../domain/order';
 import type { OrderRepository } from './ports/order.repository';
 
 export class CancelOrderUseCase {
@@ -11,7 +11,7 @@ export class CancelOrderUseCase {
     return this.orders.withUserLock(userId, async transaction => {
       const order = await transaction.findOrder(orderId);
       if (!order) throw new OrderResourceNotFoundError('Order not found for this user');
-      isCancellable(order.status);
+      assertCancellable(order.status);
       return transaction.cancel(order.id);
     });
   }

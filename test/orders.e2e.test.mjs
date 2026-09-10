@@ -6,6 +6,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../dist/app.module.js';
 import { SubmitOrderUseCase } from '../dist/orders/application/submit-order.use-case.js';
 import { PrismaOrderRepository } from '../dist/orders/infrastructure/persistence/prisma-order.repository.js';
+import { PrismaInstrumentRepository } from '../dist/instruments/infrastructure/persistence/prisma-instrument.repository.js';
 import { PrismaPortfolioRepository } from '../dist/portfolio/infrastructure/persistence/prisma-portfolio.repository.js';
 import { rebuildAccountSnapshot } from '../dist/shared/infrastructure/database/account-snapshot.store.js';
 import { PrismaService } from '../dist/shared/infrastructure/database/prisma.service.js';
@@ -292,7 +293,7 @@ test('IDs above the JS safe-integer limit survive searches, orders, portfolios a
   assert.equal(result.availableCash, '80.00');
   assert.equal((await portfolio(id - 1n)).availableCash, '0.00');
   const search = await (await fetch(`${url}/instruments?query=BIGIDTEST`)).json();
-  assert.equal(search[0].id, id.toString());
+  assert.equal(search.items[0].id, id.toString());
   const pending = await submit(id, { ...market, instrumentId: id.toString(), type: 'LIMIT', price: '10', size: 1 });
   await prisma.order.update({ where: { id: BigInt(pending.id) }, data: { id } });
   await cancel(id - 1n, id, 404);
@@ -491,7 +492,7 @@ test('a rolled-back submission does not consume its transaction ID', async () =>
   const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
   const body = { ...transfer, size: 50, transactionId: randomUUID() };
   const failing = prisma.$extends({ query: { accountSnapshot: { upsert() { throw new Error('Snapshot write failed'); } } } });
-  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(failing));
+  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(failing), new PrismaInstrumentRepository(failing));
   await assert.rejects(useCase.execute(id, body), /Snapshot write failed/);
   assert.equal(await prisma.order.count({ where: { userId: id, transactionId: body.transactionId } }), 0);
   assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
@@ -529,7 +530,7 @@ test('a global unique violation after simultaneous lookups becomes a conflict an
     }
     return result;
   } } } });
-  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(tracked));
+  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(tracked), new PrismaInstrumentRepository(tracked));
   const results = await Promise.allSettled(users.map(id => useCase.execute(id, { ...market, transactionId })));
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
   const failure = results.find(r => r.status === 'rejected').reason;

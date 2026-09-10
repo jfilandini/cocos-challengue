@@ -1,9 +1,24 @@
-import type { Instrument } from '../domain/instrument';
-import type { InstrumentRepository } from './ports/instrument.repository';
+import { z } from 'zod';
+import type { InstrumentRepository, InstrumentSearchResult } from './ports/instrument.repository';
+
+const positiveInteger = z.union([z.string().regex(/^\d+$/), z.number()])
+  .pipe(z.coerce.number<string | number>().int().positive());
+
+const searchSchema = z.object({
+  query: z.string().trim().min(1, 'query must have a value'),
+  page: positiveInteger.default(1),
+  limit: positiveInteger.pipe(z.number().max(100)).default(20),
+});
+
+export interface InstrumentSearchPage extends InstrumentSearchResult {
+  page: number;
+  limit: number;
+  totalPages: number;
+}
 
 export class InvalidInstrumentSearchError extends Error {
-  constructor() {
-    super('query must have a value');
+  constructor(message = 'query must have a value') {
+    super(message);
     this.name = 'InvalidInstrumentSearchError';
   }
 }
@@ -11,11 +26,19 @@ export class InvalidInstrumentSearchError extends Error {
 export class SearchInstrumentsUseCase {
   constructor(private readonly instruments: InstrumentRepository) {}
 
-  execute(query: unknown): Promise<Instrument[]> {
-    if (typeof query !== 'string' || !query.trim()) {
-      throw new InvalidInstrumentSearchError();
+  execute(query: unknown, page?: unknown, limit?: unknown): Promise<InstrumentSearchPage> {
+    const parsed = searchSchema.safeParse({ query, page, limit });
+    if (!parsed.success) {
+      throw new InvalidInstrumentSearchError(parsed.error.issues.map(issue =>
+        `${issue.path.join('.')}: ${issue.message}`).join('; '));
     }
-
-    return this.instruments.search(query.trim());
+    const input = parsed.data;
+    return this.instruments.search(input.query, { page: input.page, limit: input.limit })
+      .then(result => ({
+        ...result,
+        page: input.page,
+        limit: input.limit,
+        totalPages: Math.ceil(result.total / input.limit),
+      }));
   }
 }

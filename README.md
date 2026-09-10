@@ -32,18 +32,6 @@ docker compose down
 
 Después de cambiar el código, ejecutar nuevamente `docker compose up --build -d --wait`.
 
-## Documentación Swagger / OpenAPI
-
-La API cuenta con documentación interactiva generada con Swagger (OpenAPI 3.0):
-
-- **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs) (o el puerto configurado en `API_PORT` / `PORT`)
-- **Especificación OpenAPI (JSON):** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
-
-Desde la interfaz web de Swagger es posible consultar y probar los endpoints de:
-- **Instruments:** Búsqueda de activos por ticker o nombre (`GET /instruments`).
-- **Portfolio:** Consulta de portfolio por usuario (`GET /users/:userId/portfolio`) o por número de cuenta (`GET /accounts/:accountNumber/portfolio`).
-- **Orders:** Envío de órdenes MARKET y LIMIT, transferencias CASH_IN y CASH_OUT (`POST /users/:userId/orders`) y cancelación de órdenes en estado NEW (`POST /users/:userId/orders/:orderId/cancel`).
-
 ## Desarrollo local
 
 ### Lint
@@ -109,9 +97,11 @@ curl 'http://localhost:3000/instruments?query=molinos'
 ```
 
 Usar el puerto configurado en `API_PORT` (3001 si se eligió ese valor).
-El parámetro `query` es obligatorio: entre 1 y 255 caracteres luego de quitar espacios al inicio y al final. Busca coincidencias parciales por ticker **o** nombre, sin distinguir mayúsculas y minúsculas. Los acentos se conservan y los caracteres `%`, `_` y `\` se buscan literalmente.
+El parámetro `query` es obligatorio: debe contener texto luego de quitar espacios al inicio y al final. Busca coincidencias parciales por ticker **o** nombre, sin distinguir mayúsculas y minúsculas. Los acentos se conservan y los caracteres `%`, `_` y `\` se buscan literalmente.
 
-La respuesta es un array de objetos `{ id, ticker, name, type }` ordenados por ticker. Incluye acciones y monedas: ARS puede encontrarse por ticker (`ars`) o nombre (`pesos`). Si no hay coincidencias, devuelve `[]`. Una búsqueda ausente, vacía o inválida devuelve HTTP 400.
+La búsqueda acepta `page` (por defecto `1`) y `limit` (por defecto `20`, máximo `100`), ambos enteros positivos. Ejemplo: `GET /instruments?query=molin&page=2&limit=2`.
+
+La respuesta es `{ items, total, page, limit, totalPages }`. `items` contiene objetos `{ id, ticker, name, type }` ordenados por ticker e ID. `total` cuenta todas las coincidencias y `totalPages` indica la cantidad de páginas. Esta estructura reemplaza el array anterior; los consumidores deben leer `items`. Incluye acciones y monedas: ARS puede encontrarse por ticker (`ars`) o nombre (`pesos`). Si no hay coincidencias, devuelve `items: []`, `total: 0` y `totalPages: 0`. Una página posterior a la última devuelve `items: []` y conserva los totales. Una búsqueda ausente, vacía o inválida, o parámetros de paginación inválidos, devuelve HTTP 400.
 
 Las pruebas funcionales usan la base con el SQL original y no modifican datos:
 
@@ -153,10 +143,6 @@ El esquema se inicializa mediante `docker/postgres/database.sql`. En esta etapa 
 El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
 
 La prueba funcional de envío de órdenes está en `test/orders.e2e.test.mjs` y usa una base de pruebas aislada.
-
-## Dependencias
-
-La auditoría inicial de npm informa cuatro entradas de severidad alta asociadas a la CLI de Prisma 7.10.0 (`prisma`, `@prisma/config`, `deepmerge-ts` y `mysql2`). Queda pendiente resolverlas con una actualización compatible; no se aplicó el downgrade mayor sugerido por `npm audit fix --force`. La poda de npm conserva la CLI por el árbol de dependencias actual, por lo que los avisos también aparecen con `--omit=dev` y la CLI sigue presente en la imagen.
 
 ## Portfolio
 
@@ -289,63 +275,53 @@ Cancelar FILLED, REJECTED o CANCELLED devuelve 409. Orden inexistente o pertenec
 Las pruebas funcionales usan PostgreSQL aislado y verifican persistencia, portfolio, precios, redondeo, transferencias, reservas, cancelaciones y concurrencia. Los supuestos restantes están documentados: rendimiento total de la posición abierta sobre costo promedio, reservas de LIMIT, transferencias en pesos enteros por size INT y el historial inconsistente de BMA provisto en el seed.
 
 
-## Identificadores BIGINT
+## Documentación Swagger / OpenAPI
 
-Las claves primarias, referencias y secuencias usan PostgreSQL BIGINT. El dominio y Prisma trabajan con `bigint`; HTTP devuelve todos los IDs como strings decimales para conservar precisión. Enviar `instrumentId` como string (por ejemplo, `"47"`); los números JSON también se aceptan por compatibilidad. Los parámetros de ruta también se interpretan directamente como bigint, sin pasar por Number.
+La API cuenta con documentación interactiva generada con Swagger (OpenAPI 3.0):
 
-Los IDs se convierten con `BigInt` sin validaciones de límites numéricos en la aplicación. Los controladores convierten los IDs de respuesta a strings para serializarlos en JSON. `size` conserva INT y sus validaciones de cantidad positiva, sin fracciones. `accountNumber` sigue siendo texto y conserva ceros iniciales.
+- **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs) (o el puerto configurado en `API_PORT` / `PORT`)
+- **Especificación OpenAPI (JSON):** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
 
-El archivo `docker/postgres/database.sql` ya define los IDs como BIGINT para nuevas bases. Las pruebas cubren IDs mayores a 2^53, incluyendo usuarios consecutivos, referencias a instrumentos y cancelación de órdenes.
-
-
-## Ledger y snapshot de cuenta
-
-`orders` conserva el historial de movimientos y sus estados. `account_snapshots` contiene una fila por usuario, identificada por `userid`:
-
-| Columna | Contenido |
-| --- | --- |
-| `userid` | Clave primaria y referencia a users. |
-| `cash` | Saldo contable en pesos (NUMERIC). |
-| `reservedcash` | Pesos reservados por compras LIMIT NEW (NUMERIC). |
-| `positions` | JSONB con instrumentId, cantidad, cantidad reservada, costo remanente e indicador de inconsistencia por posición. IDs y costos se guardan como strings. |
-| `updatedat` | Fecha de actualización del estado derivado. |
-
-No se guardan precios de mercado ni rendimientos en el snapshot: se calculan con las cotizaciones actuales al consultar. ARS se representa mediante cash y reservedcash, y el contrato HTTP sigue incluyéndolo en positions.
-
-Una orden FILLED aplica su efecto incremental; una LIMIT NEW reserva recursos; una cancelación libera únicamente la reserva de la orden original. REJECTED no modifica el snapshot. La fila del usuario se bloquea antes de leer o escribir. Si falla la escritura del snapshot, también se revierte la creación o cancelación de la orden.
-
-`readAccountSnapshot` solo consulta y devuelve null si no existe: nunca reproduce orders ni escribe. El llamador solicita explícitamente `initializeAccountSnapshot` cuando falta, dentro de la misma transacción y bloqueo de usuario. La inicialización construye el estado leyendo orders en lotes de 1000, ordenados por datetime e id, y conserva cualquier snapshot ya existente. `rebuildAccountSnapshot` sigue siendo la operación explícita para reemplazar un snapshot desde el historial. Las operaciones siguientes leen y actualizan una fila y sus posiciones, sin cargar el historial. La inicialización también crea snapshots vacíos para usuarios sin movimientos. Los datos inconsistentes del seed conservan el tratamiento documentado para BMA.
-
-El esquema de la tabla está en el SQL inicial, sin archivos de migración. Para reconstruir snapshots a partir de orders (por ejemplo después de editar o importar órdenes directamente):
-
-```sh
-# Local, todos los usuarios:
-npm run snapshots:rebuild
-# Solo un usuario:
-npm run snapshots:rebuild -- 1
-# Con la API de Docker ya compilada:
-docker compose exec -T api node scripts/rebuild-snapshots.mjs
-```
-
-La reconstrucción reemplaza el snapshot de cada usuario bajo el mismo bloqueo y es repetible; no modifica orders. Cambios de órdenes por fuera de la API requieren reconstrucción explícita. No se usa un corte por máximo ID, porque una cancelación cambia el estado de una orden existente. Este snapshot representa el estado actual, no un histórico diario ni un cierre de mercado. No hay un proceso programado necesario para mantenerlo al día.
-
-Las pruebas verifican reconstrucción repetida, lectura paginada, ausencia de consultas al historial con un snapshot existente, precios actuales y rollback conjunto de órdenes, cancelaciones y snapshots, además de los casos de concurrencia.
+Desde la interfaz web de Swagger es posible consultar y probar los endpoints de:
+- **Instruments:** Búsqueda de activos por ticker o nombre (`GET /instruments`).
+- **Portfolio:** Consulta de portfolio por usuario (`GET /users/:userId/portfolio`) o por número de cuenta (`GET /accounts/:accountNumber/portfolio`).
+- **Orders:** Envío de órdenes MARKET y LIMIT, transferencias CASH_IN y CASH_OUT (`POST /users/:userId/orders`) y cancelación de órdenes en estado NEW (`POST /users/:userId/orders/:orderId/cancel`).
 
 
-La validación del envío de órdenes está definida con Zod en `src/orders/application/order.schema.ts`. Usa esquemas estrictos para MARKET y LIMIT, normaliza importes a strings decimales e IDs a bigint, y devuelve errores HTTP 400 con el campo afectado. El dominio conserva las decisiones sobre recursos, cantidad calculada y estado de la orden; no importa Zod.
+## Patrón Ledger y Snapshot de Cuenta
+
+Para optimizar la performance y evitar recorrer y recalcular la tabla completa de `orders` en cada consulta de portfolio o validación de saldo:
+
+- **Ledger inmutable (`orders`):** La tabla de órdenes funciona como registro contable inmutable de todos los movimientos históricos (`FILLED`, `NEW`, `REJECTED`, `CANCELLED`).
+- **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`cash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes.
+- **Actualización transaccional incremental:** Cada nueva orden ejecutada o cancelada impacta directamente sobre el snapshot en la misma transacción ACID, permitiendo consultar el portfolio y verificar fondos en $O(1)$ sin agregaciones pesadas.
+- **Reconstrucción:** Ante modificaciones manuales o mantenimiento, el estado puede regenerarse a partir del historial mediante `npm run snapshots:rebuild`.
 
 
-## Deduplicación de órdenes
+## Deduplicación e Idempotencia de Órdenes
 
-Cada envío requiere `transactionId`, un string no vacío de hasta 100 caracteres (se quitan espacios de los extremos; distingue mayúsculas). El cliente lo genera una vez por operación, por ejemplo con `crypto.randomUUID()`, y lo conserva al reintentar por timeout o pérdida de conexión.
+Para garantizar la consistencia de la base de datos y evitar el procesamiento de órdenes duplicadas ante reintentos de red:
 
-La unicidad es global: `UNIQUE(transactionid)` en orders. Un identificador no puede repetirse aunque pertenezca a otro usuario. Dentro del bloqueo de usuario, antes de consultar cotizaciones o recursos:
+- **Validación de `transactionId`:** Cada solicitud de orden valida un identificador único (`transactionId`). Si se recibe un identificador ya existente, la solicitud es rechazada (HTTP 409 Conflict), evitando duplicaciones y asegurando la consistencia de los saldos y posiciones.
+- **Compatibilidad con datos iniciales:** La columna permite valores `NULL` exclusivamente para preservar la compatibilidad con el dataset provisto inicialmente en el challenge.
+- **Escenario sin `transactionId` del cliente:** Se asumió que el servicio o cliente consumidor envía este identificador de idempotencia. En caso de que el cliente no lo envíe, se debería generar uno internamente en el backend asociando atributos clave del usuario y la orden (por ejemplo, derivado de `userId`, `instrumentId`, `side`, monto/cantidad y una ventana de tiempo) para detectar y descartar duplicados accidentales.
 
-- Si el transactionId ya existe, devuelve HTTP 409 con `transactionId already exists`. No procesa la orden ni modifica el snapshot, independientemente del contenido enviado o del estado de la orden existente.
-- Si no existe, procesa la orden y guarda su transactionId en la misma transacción que el snapshot. Una orden creada devuelve HTTP 201, incluida REJECTED.
 
-Con solicitudes simultáneas para el mismo identificador, incluso desde usuarios distintos, solo una puede crear la orden. La restricción única resuelve la carrera entre usuarios; su violación se traduce a HTTP 409 y revierte la transacción perdedora. El bloqueo por usuario sigue protegiendo sus fondos. No se almacena ni compara un fingerprint del contenido y no se devuelve la orden anterior.
+## Consideraciones para Entornos Productivos
 
-Una orden REJECTED o CANCELLED también conserva su identificador. Los errores de validación y transacciones revertidas no lo consumen. Un 409 confirma que ese identificador ya fue usado; no significa que la orden anterior se haya ejecutado (podría estar rechazada o cancelada). No generar un ID nuevo para reintentar automáticamente una operación de resultado desconocido.
+Para la evolución de esta solución hacia un entorno de producción de alta escala y criticidad financiera, se destacan las siguientes sugerencias arquitectónicas:
 
-Las órdenes del seed pueden tener transactionId en NULL; los nuevos envíos por API lo requieren. La definición está en `docker/postgres/database.sql` y Prisma, sin un archivo de migración adicional. Las pruebas cubren concurrencia, unicidad entre usuarios, transferencias, rechazos, cancelaciones, rollback y la restricción única de PostgreSQL.
+### 1. Observabilidad y Monitoreo de Métricas (APM)
+
+En un entorno productivo se sugiere implementar un agente de seguimiento de métricas y rendimiento de aplicaciones (APM), como **Datadog** o **New Relic** (o soluciones basadas en **OpenTelemetry**), para supervisar en tiempo real latencias (p95/p99), throughput, tasas de error, saturación del connection pool de la base de datos y trazabilidad distribuida de transacciones.
+
+### 2. Sugerencia de Desacople en Microservicios y Patrón Saga
+
+Como sugerencia de evolución arquitectónica, para escenarios de alta concurrencia y crecimiento de equipos, el proyecto podría desacoplarse en **microservicios** especializados según sus contextos delimitados (por ejemplo, servicios independientes para *Orders*, *Portfolio/Ledger*, *Market Data* y *Accounts*).
+
+En un esquema distribuido con bases de datos independientes por servicio, para coordinar los flujos transaccionales y mantener la consistencia de los datos de forma organizada y mantenible, se debería implementar el **Patrón Saga** (adoptando cualquiera de sus dos modalidades: **orquestación** con un coordinador o **coreografía** orientada a eventos con un message broker).
+
+### 3. Mantenimiento y Auditoría de Dependencias
+
+- **Resolución de avisos de `npm audit`:** Resolver las advertencias de dependencias transitivas asociadas a la CLI de Prisma cuando se publiquen parches compatibles upstream, evitando aplicar *downgrades* mayores forzados.
+

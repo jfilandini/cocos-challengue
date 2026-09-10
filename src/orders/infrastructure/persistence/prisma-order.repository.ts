@@ -1,15 +1,13 @@
 import { Prisma } from '../../../generated/prisma/client';
 import { z } from 'zod';
-import { OrderIdempotencyConflictError } from '../../application/order-idempotency';
 import { toSnapshotOrder } from '../../../shared/infrastructure/database/snapshot-order.mapper';
 import { initializeAccountSnapshot, readAccountSnapshot, saveAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
 import { applyOrder, cancelPendingOrder } from '../../../shared/domain/account-snapshot';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
-import { isInstrumentType } from '../../../shared/domain/instrument-type';
 import { isOrderStatus, OrderStatus } from '../../../shared/domain/order-status';
 import { PortfolioDataError } from '../../../shared/domain/account-snapshot';
-import { OrderCancellationError, OrderResourceNotFoundError } from '../../domain/order';
+import { OrderCancellationError, OrderIdempotencyConflictError, OrderResourceNotFoundError } from '../../domain/order';
 import type { OrderRepository, OrderTransaction } from '../../application/ports/order.repository';
 
 const transactionConstraintMetadata = z.object({
@@ -48,13 +46,6 @@ export class PrismaOrderRepository implements OrderRepository {
           if (result.count !== 1) throw new OrderCancellationError('Only NEW orders can be cancelled');
           await saveAccountSnapshot(tx, userId, next);
           return { id, userId, status: OrderStatus.CANCELLED };
-        },
-        async findInstrument(id) {
-          const instrument = await tx.instrument.findUnique({
-            where: { id },
-            select: { ticker: true, type: true, marketData: { where: { date: { not: null } }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { close: true } } },
-          });
-          return instrument ? { ticker: instrument.ticker, type: isInstrumentType(instrument.type) ? instrument.type : null, close: instrument.marketData[0]?.close?.toString() ?? null } : null;
         },
         initializeSnapshot() {
           return initializeAccountSnapshot(tx, userId);

@@ -1,11 +1,9 @@
-import type { InstrumentType } from '../../../shared/domain/instrument-type';
 import type { AccountSnapshot } from '../../../shared/domain/account-snapshot';
 import type { CancelledOrder, OrderDraft, SubmittedOrder } from '../../domain/order';
 import type { OrderStatus } from '../../../shared/domain/order-status';
 
 export interface OrderTransaction {
   existsByTransactionId(transactionId: string): Promise<boolean>;
-  findInstrument(id: bigint): Promise<{ ticker: string | null; type: InstrumentType | null; close: string | null } | null>;
   readSnapshot(): Promise<AccountSnapshot | null>;
   initializeSnapshot(): Promise<AccountSnapshot>;
   save(order: OrderDraft, transactionId: string): Promise<SubmittedOrder>;

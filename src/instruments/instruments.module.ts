@@ -5,7 +5,7 @@ import type { InstrumentRepository } from './application/ports/instrument.reposi
 import { InstrumentsController } from './infrastructure/http/instruments.controller';
 import { PrismaInstrumentRepository } from './infrastructure/persistence/prisma-instrument.repository';
 
-const INSTRUMENT_REPOSITORY = Symbol('InstrumentRepository');
+export const INSTRUMENT_REPOSITORY = Symbol('InstrumentRepository');
 
 @Module({
   imports: [DatabaseModule],
@@ -18,5 +18,6 @@ const INSTRUMENT_REPOSITORY = Symbol('InstrumentRepository');
       inject: [INSTRUMENT_REPOSITORY],
     },
   ],
+  exports: [INSTRUMENT_REPOSITORY],
 })
 export class InstrumentsModule {}
