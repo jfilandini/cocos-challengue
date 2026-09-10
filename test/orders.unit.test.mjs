@@ -1,4 +1,4 @@
-import { rebuildSnapshot } from '../dist/shared/domain/account-snapshot.js';
+import { rebuildSnapshot } from '../dist/snapshot/domain/account-snapshot.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { generateOrderDraft, InvalidOrderError } from '../dist/orders/domain/order.js';

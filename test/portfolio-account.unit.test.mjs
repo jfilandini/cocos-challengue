@@ -1,4 +1,4 @@
-import { rebuildSnapshot } from '../dist/shared/domain/account-snapshot.js';
+import { rebuildSnapshot } from '../dist/snapshot/domain/account-snapshot.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { GetPortfolioByAccountNumberUseCase, InvalidPortfolioAccountError, PortfolioAccountNotFoundError } from '../dist/portfolio/application/get-portfolio-by-account-number.use-case.js';

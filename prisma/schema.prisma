@@ -9,9 +9,9 @@ datasource db {
 }
 
 model User {
-  id            BigInt     @id @default(autoincrement())
-  email         String? @db.VarChar(255)
-  accountNumber String? @map("accountnumber") @db.VarChar(20)
+  id            BigInt           @id @default(autoincrement())
+  email         String           @db.VarChar(255)
+  accountNumber String           @map("accountnumber") @db.VarChar(20)
   orders        Order[]
   snapshot      AccountSnapshot?
 
@@ -20,10 +20,10 @@ model User {
 }
 
 model Instrument {
-  id         BigInt          @id @default(autoincrement())
-  ticker     String?      @db.VarChar(10)
-  name       String?      @db.VarChar(255)
-  type       String?      @db.VarChar(10)
+  id         BigInt       @id @default(autoincrement())
+  ticker     String       @db.VarChar(10)
+  name       String       @db.VarChar(255)
+  type       String       @db.VarChar(10)
   orders     Order[]
   marketData MarketData[]
 
@@ -69,7 +69,7 @@ model MarketData {
 
 model AccountSnapshot {
   userId       BigInt   @id @map("userid")
-  cash         Decimal  @db.Decimal(38, 2)
+  settledCash  Decimal  @map("settledcash") @db.Decimal(38, 2)
   reservedCash Decimal  @map("reservedcash") @db.Decimal(38, 2)
   positions    Json     @db.JsonB
   updatedAt    DateTime @default(now()) @updatedAt @map("updatedat") @db.Timestamp(6)

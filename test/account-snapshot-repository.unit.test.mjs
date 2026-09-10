@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readAccountSnapshot, initializeAccountSnapshot } from '../dist/shared/infrastructure/database/account-snapshot.store.js';
+import { readAccountSnapshot, initializeAccountSnapshot } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
 
 test('reading a missing snapshot returns null without reading orders or writing', async () => {
   const tx = {

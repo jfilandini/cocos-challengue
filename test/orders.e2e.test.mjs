@@ -8,7 +8,7 @@ import { SubmitOrderUseCase } from '../dist/orders/application/submit-order.use-
 import { PrismaOrderRepository } from '../dist/orders/infrastructure/persistence/prisma-order.repository.js';
 import { PrismaInstrumentRepository } from '../dist/instruments/infrastructure/persistence/prisma-instrument.repository.js';
 import { PrismaPortfolioRepository } from '../dist/portfolio/infrastructure/persistence/prisma-portfolio.repository.js';
-import { rebuildAccountSnapshot } from '../dist/shared/infrastructure/database/account-snapshot.store.js';
+import { rebuildAccountSnapshot } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
 import { PrismaService } from '../dist/shared/infrastructure/database/prisma.service.js';
 
 let app;
@@ -373,6 +373,38 @@ test('fresh quotes revalue the portfolio without changing the stored snapshot', 
   assert.equal(result.totalValue, '120.00');
   assert.equal(result.positions.find(p => p.ticker === 'SNAPQUOTE').dailyReturnPercent, '100.00');
   assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), stored);
+});
+
+test('portfolio distinguishes total and daily return in ARS after a MARKET sale by amount', async () => {
+  const id = await user(1000);
+  const instrument = await prisma.instrument.create({ data: { ticker: 'RETURNS', name: 'Returns functional test', type: 'ACCIONES' } });
+  createdInstruments.push(instrument.id);
+  await prisma.marketData.create({ data: { instrumentId: instrument.id, close: '10', previousClose: '8', date: new Date('2026-01-01') } });
+  const buy = await submit(id, { ...market, instrumentId: instrument.id.toString(), size: 10 });
+  assert.equal(buy.price, '10.00');
+  await prisma.marketData.create({ data: { instrumentId: instrument.id, close: '20', previousClose: '16', date: new Date('2026-01-02') } });
+  const sale = await submit(id, { instrumentId: instrument.id.toString(), side: 'SELL', type: 'MARKET', amount: '31.00' });
+  assert.equal(sale.status, 'FILLED');
+  assert.equal(sale.price, '20.00');
+  assert.equal(sale.size, 1);
+  const saved = await prisma.order.findUniqueOrThrow({ where: { id: BigInt(sale.id) } });
+  assert.equal(saved.side, 'SELL');
+  assert.equal(saved.size, 1);
+  assert.equal(saved.price.toFixed(2), '20.00');
+  const result = await portfolio(id);
+  assert.equal(result.currency, 'ARS');
+  assert.equal(result.cashBalance, '920.00');
+  assert.equal(result.availableCash, '920.00');
+  assert.equal(result.totalValue, '1100.00');
+  const stock = result.positions.find(position => position.ticker === 'RETURNS');
+  assert.equal(stock.quantity, 9);
+  assert.equal(stock.marketValue, '180.00');
+  assert.equal(stock.totalReturnPercent, '100.00');
+  assert.equal(stock.dailyReturnPercent, '25.00');
+  assert.equal(stock.priceDate, '2026-01-02');
+  const cash = result.positions.find(position => position.ticker === 'ARS');
+  assert.equal(cash.type, 'MONEDA');
+  assert.equal(cash.marketValue, '920.00');
 });
 
 test('a failed snapshot write rolls back order creation and cancellation', async () => {

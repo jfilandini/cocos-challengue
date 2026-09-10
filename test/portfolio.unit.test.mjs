@@ -1,4 +1,4 @@
-import { rebuildSnapshot } from '../dist/shared/domain/account-snapshot.js';
+import { rebuildSnapshot } from '../dist/snapshot/domain/account-snapshot.js';
 import { InvalidDatabaseIdError } from '../dist/shared/domain/database-validator-helper.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
