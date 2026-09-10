@@ -11,16 +11,14 @@ export class InstrumentResponseDto {
   @ApiProperty({
     description: 'Ticker o símbolo del instrumento',
     example: 'YPFD',
-    nullable: true,
   })
-  ticker!: string | null;
+  ticker!: string;
 
   @ApiProperty({
     description: 'Nombre o razón social del instrumento',
     example: 'Y.P.F. S.A.',
-    nullable: true,
   })
-  name!: string | null;
+  name!: string;
 
   @ApiProperty({
     description: 'Tipo de instrumento financiero',

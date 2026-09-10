@@ -9,8 +9,8 @@ export { PortfolioDataError } from '../../shared/domain/account-snapshot';
 
 export interface PortfolioInstrument {
   id: bigint;
-  ticker: string | null;
-  name: string | null;
+  ticker: string;
+  name: string;
   close: string | null;
   previousClose: string | null;
   date: string | null;
@@ -24,7 +24,7 @@ export interface PortfolioSnapshot {
 export class PortfolioPriceUnavailableError extends Error {}
 
 export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) {
-  const cash = new Amount(snapshot.account.cash);
+  const cash = new Amount(snapshot.account.settledCash);
   const reservedCash = new Amount(snapshot.account.reservedCash);
   let total = cash;
   const instruments = new Map(snapshot.instruments.map(instrument => [instrument.id, instrument]));
@@ -56,13 +56,13 @@ export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) 
         ? close.minus(instrument.previousClose).div(instrument.previousClose).mul(100).toFixed(2) : null,
       inconsistentHistory: position.inconsistent,
     };
-  }).sort((a, b) => (a.ticker ?? '').localeCompare(b.ticker ?? '') || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
+  }).sort((a, b) => a.ticker.localeCompare(b.ticker) || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
 
   const result: Array<(typeof stockPositions)[number] | {
     type: InstrumentType.MONEDA;
     instrumentId: bigint;
     ticker: string;
-    name: string | null;
+    name: string;
     quantity: string;
     reservedQuantity: string;
     availableQuantity: string;
@@ -93,7 +93,7 @@ export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) 
       inconsistentHistory: cash.lt(0) || cash.lt(reservedCash),
     });
   }
-  result.sort((a, b) => (a.ticker ?? '').localeCompare(b.ticker ?? '') || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
+  result.sort((a, b) => a.ticker.localeCompare(b.ticker) || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
 
   return {
     userId,

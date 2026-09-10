@@ -37,7 +37,7 @@ after(async () => {
 });
 
 async function user(cash = 1000) {
-  const created = await prisma.user.create({ data: { email: `orders-${randomUUID()}@test.local` } });
+  const created = await prisma.user.create({ data: { email: `orders-${randomUUID()}@test.local`, accountNumber: randomUUID().replace(/-/g, '').slice(0, 20) } });
   createdUsers.push(created.id);
   if (cash) await prisma.order.create({ data: { userId: created.id, instrumentId: 66, side: 'CASH_IN', type: 'MARKET', status: 'FILLED', size: cash, price: '1', datetime: new Date('2023-01-01') } });
   return created.id;
@@ -277,7 +277,7 @@ test('a BUY amount exceeding available funds is REJECTED even if rounded share c
 test('IDs above the JS safe-integer limit survive searches, orders, portfolios and cancellation', async () => {
   const id = 9007199254740993n;
   for (const userId of [id - 1n, id]) {
-    await prisma.user.create({ data: { id: userId } });
+    await prisma.user.create({ data: { id: userId, email: `bigid-${userId}@test.local`, accountNumber: `acc-${userId}`.slice(0, 20) } });
     createdUsers.push(userId);
   }
   await prisma.instrument.create({ data: { id, ticker: 'BIGIDTEST', name: 'Bigint test', type: 'ACCIONES' } });
@@ -301,7 +301,7 @@ test('IDs above the JS safe-integer limit survive searches, orders, portfolios a
 });
 
 
-const snapshotState = row => ({ cash: row.cash.toString(), reservedCash: row.reservedCash.toString(), positions: row.positions });
+const snapshotState = row => ({ settledCash: row.settledCash.toString(), reservedCash: row.reservedCash.toString(), positions: row.positions });
 
 test('persisted snapshots match reconstruction after fills, reservations, rejections and cancellations', async () => {
   const id = await user(1000);
@@ -312,7 +312,7 @@ test('persisted snapshots match reconstruction after fills, reservations, reject
   await submit(id, { ...market, side: 'SELL', type: 'LIMIT', size: 1, price: '300' });
   await submit(id, { ...transfer, side: 'CASH_OUT', size: 41 });
   const stored = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
-  assert.equal(stored.cash.toString(), '700');
+  assert.equal(stored.settledCash.toString(), '700');
   assert.equal(stored.reservedCash.toString(), '0');
   assert.deepEqual(stored.positions, [{ instrumentId: '1', quantity: 1, reservedQuantity: 1, cost: '259', inconsistent: false }]);
   await submit(id, { ...market, size: 100 });
@@ -349,15 +349,15 @@ test('bootstrap streams more than one ledger page; subsequent reads and submissi
   const tracked = prisma.$extends({ query: { order: { async findMany({ args, query }) { historyQueries++; return query(args); } } } });
   const portfolios = new PrismaPortfolioRepository(tracked);
   const first = await portfolios.findByUserId(id);
-  assert.equal(first.account.cash, '1005');
+  assert.equal(first.account.settledCash, '1005');
   assert.equal(historyQueries, 2);
   historyQueries = 0;
   await portfolios.findByUserId(id);
   await new PrismaOrderRepository(tracked).withUserLock(id, async transaction => {
-    assert.equal((await transaction.readSnapshot()).cash, '1005');
+    assert.equal((await transaction.readSnapshot()).settledCash, '1005');
     await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 5, price: '1' }, randomUUID());
   });
-  assert.equal((await portfolios.findByUserId(id)).account.cash, '1000');
+  assert.equal((await portfolios.findByUserId(id)).account.settledCash, '1000');
   assert.equal(historyQueries, 0);
 });
 
@@ -548,13 +548,13 @@ test('snapshot lookup is read-only and initialization is explicit and transactio
   });
   assert.equal(await prisma.accountSnapshot.count({ where: { userId: id } }), 0);
   await assert.rejects(repository.withUserLock(id, async transaction => {
-    assert.equal((await transaction.initializeSnapshot()).cash, '100');
+    assert.equal((await transaction.initializeSnapshot()).settledCash, '100');
     throw new Error('Rollback initialization');
   }), /Rollback initialization/);
   assert.equal(await prisma.accountSnapshot.count({ where: { userId: id } }), 0);
   await repository.withUserLock(id, async transaction => {
-    assert.equal((await transaction.initializeSnapshot()).cash, '100');
-    assert.equal((await transaction.readSnapshot()).cash, '100');
+    assert.equal((await transaction.initializeSnapshot()).settledCash, '100');
+    assert.equal((await transaction.readSnapshot()).settledCash, '100');
   });
   assert.equal(await prisma.accountSnapshot.count({ where: { userId: id } }), 1);
 });

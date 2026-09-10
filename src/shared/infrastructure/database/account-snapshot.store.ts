@@ -9,7 +9,7 @@ export async function readAccountSnapshot(tx: Prisma.TransactionClient, userId: 
   const saved = await tx.accountSnapshot.findUnique({ where: { userId } });
   if (!saved) return null;
   return {
-    cash: saved.cash.toString(),
+    settledCash: saved.settledCash.toString(),
     reservedCash: saved.reservedCash.toString(),
     positions: saved.positions as unknown as SnapshotPosition[],
   };
@@ -23,7 +23,7 @@ export async function initializeAccountSnapshot(tx: Prisma.TransactionClient, us
 
 export async function saveAccountSnapshot(tx: Prisma.TransactionClient, userId: bigint, snapshot: AccountSnapshot): Promise<void> {
   const data = {
-    cash: snapshot.cash,
+    settledCash: snapshot.settledCash,
     reservedCash: snapshot.reservedCash,
     positions: snapshot.positions.map(position => ({ ...position })),
   };

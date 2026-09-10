@@ -18,16 +18,14 @@ export class PortfolioPositionDto {
   @ApiProperty({
     description: 'Ticker del activo',
     example: 'YPFD',
-    nullable: true,
   })
-  ticker!: string | null;
+  ticker!: string;
 
   @ApiProperty({
     description: 'Nombre o denominación del activo',
     example: 'Y.P.F. S.A.',
-    nullable: true,
   })
-  name!: string | null;
+  name!: string;
 
   @ApiProperty({
     description: 'Cantidad total de títulos o saldo de moneda',

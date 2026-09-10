@@ -24,7 +24,7 @@ export interface SnapshotPosition {
 
 /** Derived account state. Orders remain the source of truth. Prices are read separately. */
 export interface AccountSnapshot {
-  cash: string;
+  settledCash: string;
   reservedCash: string;
   positions: SnapshotPosition[];
 }
@@ -32,7 +32,7 @@ export interface AccountSnapshot {
 export class PortfolioDataError extends Error {}
 
 export function emptySnapshot(): AccountSnapshot {
-  return { cash: '0', reservedCash: '0', positions: [] };
+  return { settledCash: '0', reservedCash: '0', positions: [] };
 }
 
 function validateOrder(order: SnapshotOrder): void {
@@ -47,7 +47,7 @@ export function applyOrder(snapshot: AccountSnapshot, order: SnapshotOrder): Acc
   validateOrder(order);
   if (order.status === OrderStatus.NEW) return changeReservation(snapshot, order, 1);
   if (isCashTransfer(order.side)) {
-    return { ...snapshot, cash: new Amount(snapshot.cash).plus(order.side === OrderSide.CASH_IN ? order.size : -order.size).toString() };
+    return { ...snapshot, settledCash: new Amount(snapshot.settledCash).plus(order.side === OrderSide.CASH_IN ? order.size : -order.size).toString() };
   }
 
   const id = order.instrumentId.toString();
@@ -72,7 +72,7 @@ export function applyOrder(snapshot: AccountSnapshot, order: SnapshotOrder): Acc
   }
   return {
     ...snapshot,
-    cash: new Amount(snapshot.cash).plus(buying ? value.negated() : value).toString(),
+    settledCash: new Amount(snapshot.settledCash).plus(buying ? value.negated() : value).toString(),
     positions: replacePosition(snapshot.positions, position),
   };
 }
