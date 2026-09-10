@@ -38,8 +38,8 @@ export class PrismaInstrumentRepository implements InstrumentRepository {
   async findInstrumentById(id: bigint) {
     const instrument = await this.prisma.instrument.findUnique({
       where: { id },
-      select: { ticker: true, type: true, marketData: { where: { date: { not: null } }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { close: true } } },
+      select: { ticker: true, type: true, marketData: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { close: true } } },
     });
-    return instrument ? { ticker: instrument.ticker, type: isInstrumentType(instrument.type) ? instrument.type : null, close: instrument.marketData[0]?.close?.toString() ?? null } : null;
+    return instrument ? { ticker: instrument.ticker, type: isInstrumentType(instrument.type) ? instrument.type : null, close: instrument.marketData[0]?.close.toString() ?? null } : null;
   }
 }

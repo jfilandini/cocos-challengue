@@ -34,7 +34,7 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
         ] },
         select: {
           id: true, ticker: true, name: true,
-          marketData: { where: { date: { not: null } }, orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
+          marketData: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1 },
         },
       });
       return {
@@ -42,9 +42,9 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
         account,
         instruments: instruments.map(({ id, ticker, name, marketData }) => ({
           id, ticker, name,
-          close: marketData[0]?.close?.toString() ?? null,
+          close: marketData[0]?.close.toString() ?? null,
           previousClose: marketData[0]?.previousClose?.toString() ?? null,
-          date: marketData[0]?.date?.toISOString().slice(0, 10) ?? null,
+          date: marketData[0]?.date.toISOString().slice(0, 10) ?? null,
         })),
       };
     }, { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 30000 });
