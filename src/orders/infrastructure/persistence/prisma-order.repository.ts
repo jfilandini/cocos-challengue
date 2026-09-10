@@ -1,3 +1,5 @@
+import { isOrderSide } from '../../../shared/domain/order-side';
+import { isOrderType } from '../../../shared/domain/order-type';
 import { ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY, type AccountSnapshotRepositoryFactory } from '../../../snapshot/application/ports/account-snapshot.repository';
 import { Prisma } from '../../../generated/prisma/client';
 import { z } from 'zod';
@@ -29,11 +31,22 @@ export class PrismaOrderRepository implements OrderRepository {
       const users = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       if (!users.length) throw new OrderResourceNotFoundError('User not found');
       return work({
-        async existsByTransactionId(transactionId) {
+        async findByTransactionId(transactionId) {
           const order = await tx.order.findUnique({
-            where: { transactionId }, select: { id: true },
+            where: { transactionId },
           });
-          return order !== null;
+          if (!order) return null;
+          if (!isOrderSide(order.side) || !isOrderType(order.type) || !isOrderStatus(order.status)) {
+            throw new PortfolioDataError(`Invalid persisted order ${order.id}`);
+          }
+          return {
+            originalRequest: order.originalRequest,
+            order: {
+              id: order.id, userId: order.userId, instrumentId: order.instrumentId,
+              transactionId, side: order.side, type: order.type, status: order.status,
+              size: order.size, price: order.price.toFixed(2), datetime: order.datetime.toISOString(),
+            },
+          };
         },
         async findOrder(id) {
           const order = await tx.order.findFirst({ where: { id, userId }, select: { id: true, status: true } });
@@ -57,10 +70,10 @@ export class PrismaOrderRepository implements OrderRepository {
         readSnapshot() {
           return snapshots.read(userId);
         },
-        async save(draft, transactionId) {
+        async save(draft, transactionId, originalRequest) {
           const snapshot = await snapshots.read(userId) ?? await snapshots.initialize(userId);
           const datetime = new Date();
-          const saved = await tx.order.create({ data: { ...draft, transactionId, datetime } });
+          const saved = await tx.order.create({ data: { ...draft, transactionId, originalRequest, datetime } });
           if (draft.status !== OrderStatus.REJECTED) await snapshots.save(userId, applyOrder(snapshot, draft));
           return { ...draft, transactionId, id: saved.id, datetime: datetime.toISOString() };
         },

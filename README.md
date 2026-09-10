@@ -196,7 +196,7 @@ La lista `positions` incluye ARS con `type: MONEDA` cuando hay saldo de efectivo
 - Las compras validan saldo disponible descontando reservas LIMIT; las ventas validan tenencia menos acciones reservadas. Si faltan recursos, se guarda `REJECTED` sin afectar el portfolio.
 - Respuesta HTTP 201 para toda orden creada, incluida `REJECTED`: `{ id, transactionId, userId, instrumentId, side, type, size, price, status, datetime }`. El cliente debe consultar `status` para conocer el resultado de negocio. `price` es un string decimal.
 - Formato inválido, campos desconocidos o instrumentos no operables: 400. Usuario/instrumento inexistente: 404. Cotización MARKET ausente o inválida: 503. Estos casos no crean órdenes.
-- No se agregan comisiones ni se admiten ventas en corto. Cada transactionId nuevo crea una orden; los reintentos con el mismo identificador devuelven HTTP 409.
+- No se agregan comisiones ni se admiten ventas en corto. Cada transactionId nuevo crea una orden; los reintentos equivalentes del mismo usuario devuelven la orden existente con HTTP 200; otra solicitud o usuario con el mismo identificador recibe HTTP 409.
 
 El caso de uso depende de un puerto transaccional. Prisma bloquea la fila del usuario con `SELECT ... FOR UPDATE` parametrizado antes de leer recursos y guardar la orden. Se usa `ReadCommitted` para que una solicitud que esperó el bloqueo vea la orden ya confirmada por la anterior. La ejecución y la persistencia del rechazo suceden dentro de esa transacción. Cancelaciones, transferencias y compras/ventas usan el mismo bloqueo por usuario.
 
@@ -302,9 +302,11 @@ Para optimizar la performance y evitar recorrer y recalcular la tabla completa d
 
 Para garantizar la consistencia de la base de datos y evitar el procesamiento de órdenes duplicadas ante reintentos de red:
 
-- **Validación de `transactionId`:** Cada solicitud de orden valida un identificador único (`transactionId`). Si se recibe un identificador ya existente, la solicitud es rechazada (HTTP 409 Conflict), evitando duplicaciones y asegurando la consistencia de los saldos y posiciones.
+- **Validación de `transactionId`:** Cada solicitud de orden valida un identificador único (`transactionId`). Un identificador nuevo crea la orden con HTTP 201. Si se repite con el mismo usuario y solicitud equivalente, devuelve la orden existente con HTTP 200 y su estado actual, sin recalcular precios, modificar el snapshot ni ejecutar nuevamente. Una solicitud o usuario diferente recibe HTTP 409.
 - **Compatibilidad con datos iniciales:** La columna permite valores `NULL` exclusivamente para preservar la compatibilidad con el dataset provisto inicialmente en el challenge.
-- **Escenario sin `transactionId` del cliente:** Se asumió que el servicio o cliente consumidor envía este identificador de idempotencia. En caso de que el cliente no lo envíe, se debería generar uno internamente en el backend asociando atributos clave del usuario y la orden (por ejemplo, derivado de `userId`, `instrumentId`, `side`, monto/cantidad y una ventana de tiempo) para detectar y descartar duplicados accidentales.
+- **Comparación de solicitudes:** `orders.originalrequest` guarda una representación normalizada de instrumento, side, type, size, amount y price. Los importes equivalentes (`10` y `"10.00"`) coinciden; cambiar de size a amount se considera otra solicitud. El precio de ejecución MARKET no participa de la comparación. Órdenes anteriores sin esta información devuelven 409; no se infiere la intención original a partir del resultado.
+- **Esquema existente:** El SQL inicial incluye `originalRequest TEXT`. Para una base ya creada, ejecutar `ALTER TABLE orders ADD COLUMN IF NOT EXISTS originalrequest TEXT;` antes de arrancar la nueva versión.
+- **Identificador obligatorio:** El cliente debe proporcionar `transactionId`; si falta, la API devuelve 400. El índice único global se conserva para proteger también las solicitudes simultáneas.
 
 
 ## Consideraciones para Entornos Productivos

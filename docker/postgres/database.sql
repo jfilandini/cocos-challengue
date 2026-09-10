@@ -21,6 +21,7 @@ CREATE TABLE instruments (
 );
 
 CREATE TABLE orders (
+  originalRequest TEXT,
   transactionId VARCHAR(100),
   CONSTRAINT uq_orders_transaction UNIQUE (transactionId),
   id BIGSERIAL PRIMARY KEY,

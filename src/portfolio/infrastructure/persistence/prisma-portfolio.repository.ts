@@ -1,5 +1,6 @@
-import { initializeAccountSnapshot, readAccountSnapshot } from '../../../snapshot/infrastructure/persistence/account-snapshot.repository';
-import { Injectable } from '@nestjs/common';
+import { ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY, type AccountSnapshotRepositoryFactory } from '../../../snapshot/application/ports/account-snapshot.repository';
+import type { Prisma } from '../../../generated/prisma/client';
+import { Inject, Injectable } from '@nestjs/common';
 import { InstrumentType } from '../../../shared/domain/instrument-type';
 import { Currency } from '../../../shared/domain/currency';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
@@ -8,7 +9,11 @@ import { type PortfolioSnapshot } from '../../domain/portfolio';
 
 @Injectable()
 export class PrismaPortfolioRepository implements PortfolioRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY)
+    private readonly snapshots: AccountSnapshotRepositoryFactory<Prisma.TransactionClient>,
+  ) {}
 
   findByUserId(userId: bigint): Promise<PortfolioSnapshot | null> {
     return this.find({ id: userId });
@@ -20,13 +25,14 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
 
   private find(where: { id: bigint } | { accountNumber: string }) {
     return this.prisma.$transaction(async tx => {
+      const snapshots = this.snapshots.forTransaction(tx);
       const users = await tx.user.findMany({ where, select: { id: true }, take: 2 });
       if (!users.length) return null;
       if (users.length > 1) throw new AmbiguousPortfolioAccountError('Account number matches multiple users');
       const userId = users[0].id;
       const locked = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       if (!locked.length) return null;
-      const account = await readAccountSnapshot(tx, userId) ?? await initializeAccountSnapshot(tx, userId);
+      const account = await snapshots.read(userId) ?? await snapshots.initialize(userId);
       const instruments = await tx.instrument.findMany({
         where: { OR: [
           { id: { in: account.positions.map(position => BigInt(position.instrumentId)) } },

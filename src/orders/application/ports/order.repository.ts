@@ -3,10 +3,10 @@ import type { CancelledOrder, OrderDraft, SubmittedOrder } from '../../domain/or
 import type { OrderStatus } from '../../../shared/domain/order-status';
 
 export interface OrderTransaction {
-  existsByTransactionId(transactionId: string): Promise<boolean>;
+  findByTransactionId(transactionId: string): Promise<{ order: SubmittedOrder; originalRequest: string | null } | null>;
   readSnapshot(): Promise<AccountSnapshot | null>;
   initializeSnapshot(): Promise<AccountSnapshot>;
-  save(order: OrderDraft, transactionId: string): Promise<SubmittedOrder>;
+  save(order: OrderDraft, transactionId: string, originalRequest?: string): Promise<SubmittedOrder>;
   findOrder(id: bigint): Promise<{ id: bigint; status: OrderStatus } | null>;
   cancel(id: bigint): Promise<CancelledOrder>;
 }

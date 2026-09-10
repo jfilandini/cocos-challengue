@@ -422,15 +422,18 @@ test('a failed snapshot write rolls back order creation and cancellation', async
 });
 
 
-test('simultaneous identical submissions create one order and return conflicts for duplicates', async () => {
+test('simultaneous identical submissions create one order and return it for every retry', async () => {
   const id = await user(1000);
   const body = { ...market, transactionId: randomUUID() };
   const responses = await Promise.all(Array.from({ length: 8 }, () => fetch(`${url}/users/${id}/orders`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   })));
-  assert.deepEqual(responses.map(response => response.status).sort(), [201, 409, 409, 409, 409, 409, 409, 409]);
+  assert.deepEqual(responses.map(response => response.status).sort(), [200, 200, 200, 200, 200, 200, 200, 201]);
   const created = await responses.find(response => response.status === 201).json();
   assert.equal(created.transactionId, body.transactionId);
+  for (const response of responses.filter(response => response.status === 200)) {
+    assert.deepEqual(await response.json(), created);
+  }
   assert.equal(await prisma.order.count({ where: { userId: id, transactionId: body.transactionId } }), 1);
   assert.equal((await portfolio(id)).availableCash, '482.00');
 });
@@ -445,12 +448,12 @@ test('concurrent reuse with different details returns 409 and only one order win
   assert.equal(await prisma.order.count({ where: { userId: id, transactionId } }), 1);
 });
 
-test('all reused keys conflict regardless of payload or user', async () => {
+test('equivalent requests replay while different payloads and users conflict', async () => {
   const id = await user();
   const transactionId = randomUUID();
   const body = { ...market, type: 'LIMIT', price: '10', transactionId };
-  await submit(id, body);
-  await submit(id, { ...body, instrumentId: '1', price: 10.00 }, 409);
+  const first = await submit(id, body);
+  assert.deepEqual(await submit(id, { ...body, instrumentId: '1', price: 10.00 }, 200), first);
   for (const change of [{ instrumentId: 3 }, { side: 'SELL' }, { size: 1 }, { price: '11' }, { size: undefined, amount: '20' }, { type: 'MARKET', price: undefined }]) {
     await submit(id, { ...body, ...change }, 409);
   }
@@ -464,14 +467,14 @@ test('transfer retries credit or debit once and rejected orders stay rejected af
   for (const side of ['CASH_IN', 'CASH_OUT']) {
     const body = { ...transfer, side, transactionId: randomUUID() };
     await submit(id, body);
-    await Promise.all([submit(id, body, 409), submit(id, body, 409)]);
+    await Promise.all([submit(id, body, 200), submit(id, body, 200)]);
     assert.equal((await portfolio(id)).availableCash, side === 'CASH_IN' ? '100.00' : '0.00');
   }
   const body = { ...market, transactionId: randomUUID() };
   const rejected = await submit(id, body);
   assert.equal(rejected.status, 'REJECTED');
   await submit(id, { ...transfer, size: 1000 });
-  await submit(id, body, 409);
+  assert.deepEqual(await submit(id, body, 200), rejected);
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: BigInt(rejected.id) } })).status, 'REJECTED');
   assert.equal((await portfolio(id)).availableCash, '1000.00');
 });
@@ -481,20 +484,23 @@ test('retrying a cancelled LIMIT does not recreate its reservation', async () =>
   const body = { ...market, type: 'LIMIT', price: '10', transactionId: randomUUID() };
   const first = await submit(id, body);
   await cancel(id, first.id);
-  await submit(id, body, 409);
+  assert.deepEqual(await submit(id, body, 200), { ...first, status: 'CANCELLED' });
   assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: BigInt(first.id) } })).status, 'CANCELLED');
   assert.equal((await portfolio(id)).reservedCash, '0.00');
 });
 
-test('duplicate MARKET request returns conflict before checking the current quote', async () => {
+test('duplicate MARKET request returns the saved result despite changed or missing quotes', async () => {
   const id = await user();
   const instrument = await prisma.instrument.create({ data: { ticker: 'IDEMQUOTE', name: 'Idempotency test', type: 'ACCIONES' } });
   createdInstruments.push(instrument.id);
   const quote = await prisma.marketData.create({ data: { instrumentId: instrument.id, close: '10', date: new Date() } });
   const body = { instrumentId: instrument.id.toString(), side: 'BUY', type: 'MARKET', amount: '100', transactionId: randomUUID() };
   const first = await submit(id, body);
+  await prisma.marketData.update({ where: { id: quote.id }, data: { close: '20' } });
+  assert.deepEqual(await submit(id, { ...body, amount: '100.00' }, 200), first);
+  await submit(id, { ...body, amount: '101' }, 409);
   await prisma.marketData.delete({ where: { id: quote.id } });
-  await submit(id, body, 409);
+  assert.deepEqual(await submit(id, body, 200), first);
   assert.equal(await prisma.order.count({ where: { id: BigInt(first.id) } }), 1);
 });
 
@@ -529,7 +535,7 @@ test('a rolled-back submission does not consume its transaction ID', async () =>
   assert.equal(await prisma.order.count({ where: { userId: id, transactionId: body.transactionId } }), 0);
   assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
   await submit(id, body);
-  await submit(id, body, 409);
+  await submit(id, body, 200);
   assert.equal((await portfolio(id)).availableCash, '150.00');
 });
 
@@ -589,4 +595,13 @@ test('snapshot lookup is read-only and initialization is explicit and transactio
     assert.equal((await transaction.readSnapshot()).settledCash, '100');
   });
   assert.equal(await prisma.accountSnapshot.count({ where: { userId: id } }), 1);
+});
+
+test('legacy orders without original request data conflict instead of guessing equivalence', async () => {
+  const id = await user();
+  const body = { ...market, transactionId: randomUUID() };
+  const first = await submit(id, body);
+  await prisma.order.update({ where: { id: BigInt(first.id) }, data: { originalRequest: null } });
+  await submit(id, body, 409);
+  assert.equal((await portfolio(id)).availableCash, '482.00');
 });
