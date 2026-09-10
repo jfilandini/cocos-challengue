@@ -1,5 +1,6 @@
 @baseUrl = http://localhost:3001
 @userId = 1
+# Reutilizar transactionId solo para reintentar la misma orden. Cambiarlo para una operación nueva.
 
 ### Portfolio antes de operar
 GET {{baseUrl}}/users/{{userId}}/portfolio
@@ -9,7 +10,8 @@ POST {{baseUrl}}/users/{{userId}}/orders
 Content-Type: application/json
 
 {
-  "instrumentId": 47,
+  "transactionId": "00000000-0000-4000-8000-000000000001",
+  "instrumentId": "47",
   "side": "BUY",
   "type": "MARKET",
   "size": 2
@@ -20,7 +22,8 @@ POST {{baseUrl}}/users/{{userId}}/orders
 Content-Type: application/json
 
 {
-  "instrumentId": 47,
+  "transactionId": "00000000-0000-4000-8000-000000000002",
+  "instrumentId": "47",
   "side": "BUY",
   "type": "LIMIT",
   "price": "900.00",
@@ -32,7 +35,8 @@ POST {{baseUrl}}/users/{{userId}}/orders
 Content-Type: application/json
 
 {
-  "instrumentId": 47,
+  "transactionId": "00000000-0000-4000-8000-000000000003",
+  "instrumentId": "47",
   "side": "SELL",
   "type": "MARKET",
   "size": 1
@@ -43,7 +47,8 @@ POST {{baseUrl}}/users/{{userId}}/orders
 Content-Type: application/json
 
 {
-  "instrumentId": 66,
+  "transactionId": "00000000-0000-4000-8000-000000000004",
+  "instrumentId": "66",
   "side": "CASH_IN",
   "type": "MARKET",
   "amount": "1000.00"
@@ -54,7 +59,8 @@ POST {{baseUrl}}/users/{{userId}}/orders
 Content-Type: application/json
 
 {
-  "instrumentId": 66,
+  "transactionId": "00000000-0000-4000-8000-000000000005",
+  "instrumentId": "66",
   "side": "CASH_OUT",
   "type": "MARKET",
   "size": 500
