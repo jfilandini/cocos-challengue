@@ -1,16 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import type { AccountSnapshotRepository, AccountSnapshotRepositoryFactory } from '../../application/ports/account-snapshot.repository';
-import type { Prisma } from '../../../generated/prisma/client';
+import type { Prisma, PrismaClient } from '../../../generated/prisma/client';
 import { applyOrder, emptySnapshot, type AccountSnapshot, type SnapshotPosition } from '../../domain/account-snapshot';
 import { OrderStatus } from '../../../shared/domain/order-status';
 import { toSnapshotOrder } from './snapshot-order.mapper';
 
+export type PrismaDbClient = Prisma.TransactionClient | PrismaClient;
+
 export class PrismaAccountSnapshotRepository implements AccountSnapshotRepository {
-  constructor(private readonly tx: Prisma.TransactionClient) {}
+  constructor(private readonly db: PrismaDbClient) {}
 
   /** Read only: a missing snapshot is returned as null. */
   async read(userId: bigint): Promise<AccountSnapshot | null> {
-    const saved = await this.tx.accountSnapshot.findUnique({ where: { userId } });
+    const saved = await this.db.accountSnapshot.findUnique({ where: { userId } });
     if (!saved) return null;
     return {
       settledCash: saved.settledCash.toString(),
@@ -31,14 +33,14 @@ export class PrismaAccountSnapshotRepository implements AccountSnapshotRepositor
       reservedCash: snapshot.reservedCash,
       positions: snapshot.positions.map(position => ({ ...position })),
     };
-    await this.tx.accountSnapshot.upsert({ where: { userId }, create: { userId, ...data }, update: data });
+    await this.db.accountSnapshot.upsert({ where: { userId }, create: { userId, ...data }, update: data });
   }
 
   async rebuild(userId: bigint): Promise<AccountSnapshot> {
     let snapshot = emptySnapshot();
     let cursor: bigint | undefined;
     for (;;) {
-      const orders = await this.tx.order.findMany({
+      const orders = await this.db.order.findMany({
         where: { userId, status: { in: [OrderStatus.FILLED, OrderStatus.NEW] } },
         orderBy: [{ datetime: 'asc' }, { id: 'asc' }],
         take: 1000,
@@ -55,8 +57,8 @@ export class PrismaAccountSnapshotRepository implements AccountSnapshotRepositor
 }
 
 @Injectable()
-export class PrismaAccountSnapshotRepositoryFactory implements AccountSnapshotRepositoryFactory<Prisma.TransactionClient> {
-  forTransaction(transaction: Prisma.TransactionClient): AccountSnapshotRepository {
+export class PrismaAccountSnapshotRepositoryFactory implements AccountSnapshotRepositoryFactory<PrismaDbClient> {
+  forTransaction(transaction: PrismaDbClient): AccountSnapshotRepository {
     return new PrismaAccountSnapshotRepository(transaction);
   }
 }
