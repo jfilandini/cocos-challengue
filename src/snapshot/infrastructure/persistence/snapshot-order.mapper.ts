@@ -1,9 +1,9 @@
-import { Currency } from '../../domain/currency';
-import { InstrumentType, isInstrumentType } from '../../domain/instrument-type';
+import { Currency } from '../../../shared/domain/currency';
+import { InstrumentType, isInstrumentType } from '../../../shared/domain/instrument-type';
 import { PortfolioDataError, type SnapshotOrder } from '../../domain/account-snapshot';
-import { isCashTransfer, isOrderSide } from '../../domain/order-side';
-import { isOrderStatus, OrderStatus } from '../../domain/order-status';
-import { isOrderType } from '../../domain/order-type';
+import { isCashTransfer, isOrderSide } from '../../../shared/domain/order-side';
+import { isOrderStatus, OrderStatus } from '../../../shared/domain/order-status';
+import { isOrderType } from '../../../shared/domain/order-type';
 import type { Order } from '../../../generated/prisma/client';
 
 type MovementRow = Order & { instrument: { ticker: string; type: string } };

@@ -1,11 +1,11 @@
-import { PortfolioDataError, type AccountSnapshot } from '../../shared/domain/account-snapshot';
+import { PortfolioDataError, type AccountSnapshot } from '../../snapshot/domain/account-snapshot';
 import Decimal from 'decimal.js';
 import { InstrumentType } from '../../shared/domain/instrument-type';
 import { Currency } from '../../shared/domain/currency';
 
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 
-export { PortfolioDataError } from '../../shared/domain/account-snapshot';
+export { PortfolioDataError } from '../../snapshot/domain/account-snapshot';
 
 export interface PortfolioInstrument {
   id: bigint;

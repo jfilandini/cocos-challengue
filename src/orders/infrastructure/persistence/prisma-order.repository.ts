@@ -1,12 +1,11 @@
 import { Prisma } from '../../../generated/prisma/client';
 import { z } from 'zod';
-import { toSnapshotOrder } from '../../../shared/infrastructure/database/snapshot-order.mapper';
-import { initializeAccountSnapshot, readAccountSnapshot, saveAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
-import { applyOrder, cancelPendingOrder } from '../../../shared/domain/account-snapshot';
+import { toSnapshotOrder } from '../../../snapshot/infrastructure/persistence/snapshot-order.mapper';
+import { initializeAccountSnapshot, readAccountSnapshot, saveAccountSnapshot } from '../../../snapshot/infrastructure/persistence/account-snapshot.repository';
+import { applyOrder, cancelPendingOrder, PortfolioDataError } from '../../../snapshot/domain/account-snapshot';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
 import { isOrderStatus, OrderStatus } from '../../../shared/domain/order-status';
-import { PortfolioDataError } from '../../../shared/domain/account-snapshot';
 import { OrderCancellationError, OrderIdempotencyConflictError, OrderResourceNotFoundError } from '../../domain/order';
 import type { OrderRepository, OrderTransaction } from '../../application/ports/order.repository';
 

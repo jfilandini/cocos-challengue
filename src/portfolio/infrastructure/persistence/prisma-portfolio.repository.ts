@@ -1,4 +1,4 @@
-import { initializeAccountSnapshot, readAccountSnapshot } from '../../../shared/infrastructure/database/account-snapshot.store';
+import { initializeAccountSnapshot, readAccountSnapshot } from '../../../snapshot/infrastructure/persistence/account-snapshot.repository';
 import { Injectable } from '@nestjs/common';
 import { InstrumentType } from '../../../shared/domain/instrument-type';
 import { Currency } from '../../../shared/domain/currency';

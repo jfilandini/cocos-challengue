@@ -1,8 +1,7 @@
 import type { Prisma } from '../../../generated/prisma/client';
 import { applyOrder, emptySnapshot, type AccountSnapshot, type SnapshotPosition } from '../../domain/account-snapshot';
-import { OrderStatus } from '../../domain/order-status';
+import { OrderStatus } from '../../../shared/domain/order-status';
 import { toSnapshotOrder } from './snapshot-order.mapper';
-
 
 /** Read only: a missing snapshot is returned as null. */
 export async function readAccountSnapshot(tx: Prisma.TransactionClient, userId: bigint): Promise<AccountSnapshot | null> {

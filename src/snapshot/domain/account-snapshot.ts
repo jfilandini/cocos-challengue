@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
-import { isCashTransfer, isInstrumentOrder, OrderSide } from './order-side';
-import { OrderStatus } from './order-status';
-import { OrderType } from './order-type';
+import { isCashTransfer, isInstrumentOrder, OrderSide } from '../../shared/domain/order-side';
+import { OrderStatus } from '../../shared/domain/order-status';
+import { OrderType } from '../../shared/domain/order-type';
 
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 

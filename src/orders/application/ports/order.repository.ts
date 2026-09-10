@@ -1,4 +1,4 @@
-import type { AccountSnapshot } from '../../../shared/domain/account-snapshot';
+import type { AccountSnapshot } from '../../../snapshot/domain/account-snapshot';
 import type { CancelledOrder, OrderDraft, SubmittedOrder } from '../../domain/order';
 import type { OrderStatus } from '../../../shared/domain/order-status';
 
