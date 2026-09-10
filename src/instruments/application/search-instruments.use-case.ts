@@ -3,7 +3,7 @@ import type { InstrumentRepository } from './ports/instrument.repository';
 
 export class InvalidInstrumentSearchError extends Error {
   constructor() {
-    super('query must be a string between 1 and 255 characters');
+    super('query must have a value');
     this.name = 'InvalidInstrumentSearchError';
   }
 }

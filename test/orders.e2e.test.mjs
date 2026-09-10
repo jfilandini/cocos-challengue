@@ -538,3 +538,22 @@ test('a global unique violation after simultaneous lookups becomes a conflict an
   const balances = await Promise.all(users.map(async id => (await portfolio(id)).availableCash));
   assert.deepEqual(balances.sort(), ['1000.00', '482.00']);
 });
+
+test('snapshot lookup is read-only and initialization is explicit and transactional', async () => {
+  const id = await user(100);
+  const repository = new PrismaOrderRepository(prisma);
+  await repository.withUserLock(id, async transaction => {
+    assert.equal(await transaction.readSnapshot(), null);
+  });
+  assert.equal(await prisma.accountSnapshot.count({ where: { userId: id } }), 0);
+  await assert.rejects(repository.withUserLock(id, async transaction => {
+    assert.equal((await transaction.initializeSnapshot()).cash, '100');
+    throw new Error('Rollback initialization');
+  }), /Rollback initialization/);
+  assert.equal(await prisma.accountSnapshot.count({ where: { userId: id } }), 0);
+  await repository.withUserLock(id, async transaction => {
+    assert.equal((await transaction.initializeSnapshot()).cash, '100');
+    assert.equal((await transaction.readSnapshot()).cash, '100');
+  });
+  assert.equal(await prisma.accountSnapshot.count({ where: { userId: id } }), 1);
+});
