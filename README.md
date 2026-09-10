@@ -200,7 +200,7 @@ La lista `positions` incluye ARS con `type: MONEDA` cuando hay saldo de efectivo
 
 El caso de uso depende de un puerto transaccional. Prisma bloquea la fila del usuario con `SELECT ... FOR UPDATE` parametrizado antes de leer recursos y guardar la orden. Se usa `ReadCommitted` para que una solicitud que esperó el bloqueo vea la orden ya confirmada por la anterior. La ejecución y la persistencia del rechazo suceden dentro de esa transacción. Cancelaciones, transferencias y compras/ventas usan el mismo bloqueo por usuario.
 
-`orders` es el ledger y `account_snapshots` almacena su estado derivado. El portfolio y la validación de recursos leen el snapshot. Guardar una orden o cancelarla actualiza su snapshot dentro de la misma transacción. La cancelación tiene una ruta específica; el envío por número de cuenta queda fuera de este endpoint.
+`orders` es el registro de órdenes y la fuente de verdad; `account_snapshots` almacena su estado derivado. El portfolio y la validación de recursos leen el snapshot. Guardar una orden aceptada o cancelarla actualiza su snapshot dentro de la misma transacción. La cancelación tiene una ruta específica; el envío por número de cuenta queda fuera de este endpoint.
 
 `requests.http` contiene ejemplos para REST Client. Sus POST modifican la cuenta indicada.
 
@@ -260,7 +260,7 @@ Cancelar FILLED, REJECTED o CANCELLED devuelve 409. Orden inexistente o pertenec
 | Cantidad o monto, sin fracciones de acciones | Exactamente size o amount; floor(amount / precio), validación de entero positivo. |
 | BUY y SELL | Enum de dominio, validación y persistencia de ambos lados. |
 | NEW, FILLED, REJECTED, CANCELLED | Estados de dominio implementados y persistidos según el flujo. |
-| MARKET inmediata | FILLED si hay recursos; ledger y portfolio reflejan la ejecución. |
+| MARKET inmediata | FILLED si hay recursos; el registro de órdenes y el portfolio reflejan la ejecución. |
 | LIMIT pendiente | NEW si hay recursos; reserva dinero o acciones. |
 | Cancelar solo NEW | Caso de uso de cancelación, control de pertenencia y actualización condicional. |
 | Rechazar exceso de fondos o acciones | Se guarda REJECTED; incluye presupuesto amount superior al disponible y reservas previas. |
@@ -288,14 +288,15 @@ Desde la interfaz web de Swagger es posible consultar y probar los endpoints de:
 - **Orders:** Envío de órdenes MARKET y LIMIT, transferencias CASH_IN y CASH_OUT (`POST /users/:userId/orders`) y cancelación de órdenes en estado NEW (`POST /users/:userId/orders/:orderId/cancel`).
 
 
-## Patrón Ledger y Snapshot de Cuenta
+## Registro de Órdenes y Snapshot de Cuenta
 
-Para optimizar la performance y evitar recorrer y recalcular la tabla completa de `orders` en cada consulta de portfolio o validación de saldo:
+Para evitar recorrer y recalcular el historial de órdenes del usuario en cada consulta de portfolio o validación de recursos, una vez inicializado el snapshot:
 
-- **Ledger inmutable (`orders`):** La tabla de órdenes funciona como registro contable inmutable de todos los movimientos históricos (`FILLED`, `NEW`, `REJECTED`, `CANCELLED`).
-- **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`cash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes.
-- **Actualización transaccional incremental:** Cada nueva orden ejecutada o cancelada impacta directamente sobre el snapshot en la misma transacción ACID, permitiendo consultar el portfolio y verificar fondos en $O(1)$ sin agregaciones pesadas.
-- **Reconstrucción:** Ante modificaciones manuales o mantenimiento, el estado puede regenerarse a partir del historial mediante `npm run snapshots:rebuild`.
+- **Registro de órdenes como fuente de verdad (`orders`):** Conserva las órdenes y su estado actual (`FILLED`, `NEW`, `REJECTED`, `CANCELLED`). Las cancelaciones actualizan el estado de las órdenes pendientes; no se conserva un historial inmutable de eventos ni la fecha de cada transición. Las órdenes ejecutadas no se modifican desde la API.
+- **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`settledcash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes.
+- **Actualización transaccional incremental:** Las órdenes ejecutadas modifican saldos y posiciones, las pendientes reservan recursos y las cancelaciones liberan reservas, dentro de la misma transacción ACID que persiste la orden o su cambio de estado. Las órdenes rechazadas no alteran esos recursos.
+- **Costo de las operaciones habituales:** El snapshot evita reproducir el historial de órdenes en cada consulta o validación. El trabajo sigue dependiendo de las posiciones y cotizaciones involucradas: se recorren y ordenan posiciones, y sus datos se leen y persisten como JSON. Por eso, consultar el portfolio o procesar una orden no tiene un costo general O(1).
+- **Reconstrucción:** Si falta el snapshot, se inicializa desde las órdenes del usuario. Ante modificaciones manuales o mantenimiento, el estado actual puede regenerarse mediante `npm run snapshots:rebuild`, que vuelve a procesar el historial. Esto no permite reconstruir las reservas a una fecha pasada, porque no se conservan todas las transiciones de estado.
 
 
 ## Deduplicación e Idempotencia de Órdenes
@@ -326,4 +327,3 @@ En un esquema distribuido con bases de datos independientes por servicio, para c
 ### 3. Mantenimiento y Auditoría de Dependencias
 
 - **Resolución de avisos de `npm audit`:** Resolver las advertencias de dependencias transitivas asociadas a la CLI de Prisma cuando se publiquen parches compatibles upstream, evitando aplicar *downgrades* mayores forzados.
-

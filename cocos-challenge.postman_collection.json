@@ -1,0 +1,864 @@
+{
+  "info": {
+    "_postman_id": "c0c05-cha11enge-backend-api-v1",
+    "name": "Cocos Challenge - Trading API",
+    "description": "Colección completa de pruebas para Cocos Challenge Backend API.\n\nIncluye:\n- Health check del sistema y base de datos\n- Búsqueda de instrumentos (tickers, nombres y paginación)\n- Consulta de Portfolio por userId y accountNumber (saldo settledCash, reservedCash, totalValue y posiciones)\n- Órdenes de fondos (CASH_IN / CASH_OUT)\n- Órdenes de mercado (BUY / SELL MARKET por size o amount)\n- Órdenes límite (BUY / SELL LIMIT con reserva de saldo y shares)\n- Cancelación de órdenes en estado NEW\n- Casos borde, idempotencia y validaciones de error (400, 404, 409, REJECTED)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "accountNumber",
+      "value": "10001",
+      "type": "string"
+    },
+    {
+      "key": "instrumentId",
+      "value": "50",
+      "type": "string"
+    },
+    {
+      "key": "arsInstrumentId",
+      "value": "66",
+      "type": "string"
+    },
+    {
+      "key": "lastCreatedOrderId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Health & System",
+      "item": [
+        {
+          "name": "Health Check (Database & App Status)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Verifica que el servicio NestJS esté activo y la conexión a PostgreSQL funcione correctamente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Health status es OK y base de datos UP\", function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql(\"OK\");",
+                  "    pm.expect(jsonData.database).to.eql(\"UP\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Instruments",
+      "item": [
+        {
+          "name": "Buscar Activo por Ticker (YPFD)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/instruments?query=YPFD&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["instruments"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "YPFD"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Busca instrumentos por su código ticker exacto o parcial."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Devuelve items con estructura válida\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"items\");",
+                  "    pm.expect(json).to.have.property(\"total\");",
+                  "    pm.expect(json.items.length).to.be.greaterThan(0);",
+                  "    pm.expect(json.items[0]).to.have.property(\"ticker\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar Activos por Nombre (Galicia / Banco)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/instruments?query=Banco&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["instruments"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "Banco"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Búsqueda insensitiva a mayúsculas por nombre del activo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paginación de Instrumentos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/instruments?query=a&page=2&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["instruments"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "a"
+                },
+                {
+                  "key": "page",
+                  "value": "2"
+                },
+                {
+                  "key": "limit",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Prueba de paginación verificando `page`, `limit` y `totalPages`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Paginación correcta\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.page).to.eql(2);",
+                  "    pm.expect(json.limit).to.eql(5);",
+                  "    pm.expect(json.items.length).to.be.at.most(5);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Portfolio",
+      "item": [
+        {
+          "name": "Obtener Portfolio por User ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "portfolio"]
+            },
+            "description": "Devuelve el estado consolidado de la cuenta del usuario: saldo en pesos (`cashBalance` / `settledCash`), saldo reservado (`reservedCash`), saldo disponible (`availableCash`), valor total de la cuenta (`totalValue`) y el desglose de posiciones en activos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"Estructura del portfolio válida\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"userId\");",
+                  "    pm.expect(json).to.have.property(\"cashBalance\");",
+                  "    pm.expect(json).to.have.property(\"reservedCash\");",
+                  "    pm.expect(json).to.have.property(\"availableCash\");",
+                  "    pm.expect(json).to.have.property(\"totalValue\");",
+                  "    pm.expect(json).to.have.property(\"positions\");",
+                  "    pm.expect(Array.isArray(json.positions)).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Obtener Portfolio por Account Number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/{{accountNumber}}/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "{{accountNumber}}", "portfolio"]
+            },
+            "description": "Devuelve el portfolio resolviendo al usuario a través de su número de cuenta (ej. '10001')."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test(\"El portfolio contiene posiciones o saldo\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.userId).to.eql(pm.collectionVariables.get(\"userId\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Fondos (Cash Transfers)",
+      "item": [
+        {
+          "name": "Ingreso de Fondos (CASH_IN por size)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{arsInstrumentId}},\n  \"side\": \"CASH_IN\",\n  \"type\": \"MARKET\",\n  \"size\": 50000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Acredita fondos en pesos al saldo de la cuenta (`settledCash`). El tamaño (`size`) representa pesos enteros para transferencias."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Orden CASH_IN queda FILLED\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"FILLED\");",
+                  "    pm.expect(json.side).to.eql(\"CASH_IN\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ingreso de Fondos (CASH_IN por amount)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{arsInstrumentId}},\n  \"side\": \"CASH_IN\",\n  \"type\": \"MARKET\",\n  \"amount\": \"15000.00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Acredita fondos especificando el parámetro `amount` (debe ser un valor monetario en pesos con formato sin centavos fraccionarios)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Orden CASH_IN queda FILLED\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"FILLED\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Retiro de Fondos (CASH_OUT)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{arsInstrumentId}},\n  \"side\": \"CASH_OUT\",\n  \"type\": \"MARKET\",\n  \"size\": 5000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Debita fondos de la cuenta. Si el usuario cuenta con suficiente `settledCash - reservedCash`, la orden se ejecuta como `FILLED`. De lo contrario se rechaza como `REJECTED`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Orden registrada\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.side).to.eql(\"CASH_OUT\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Órdenes de Compra y Venta (BUY / SELL)",
+      "item": [
+        {
+          "name": "Compra a Mercado por Cantidad (BUY MARKET por size)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{instrumentId}},\n  \"side\": \"BUY\",\n  \"type\": \"MARKET\",\n  \"size\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Compra 1 acción a precio de mercado (`close` más reciente). Si hay saldo suficiente en `settledCash`, la orden queda `FILLED` y el snapshot actualiza tanto el efectivo como la posición."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"Orden procesada (FILLED o REJECTED si no hay saldo)\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect([\"FILLED\", \"REJECTED\"]).to.include(json.status);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Compra a Mercado por Monto (BUY MARKET por amount)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{instrumentId}},\n  \"side\": \"BUY\",\n  \"type\": \"MARKET\",\n  \"amount\": \"10000.00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Invierte hasta el monto indicado. El sistema calcula la cantidad entera máxima de acciones (`floor(amount / price)`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Venta a Mercado (SELL MARKET)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{instrumentId}},\n  \"side\": \"SELL\",\n  \"type\": \"MARKET\",\n  \"size\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Vende acciones de la posición del usuario a precio de mercado. Si posee acciones disponibles (no reservadas), queda `FILLED` y acredita el importe en `settledCash`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Orden Límite de Compra (BUY LIMIT - Genera Estado NEW y Reserva)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{instrumentId}},\n  \"side\": \"BUY\",\n  \"type\": \"LIMIT\",\n  \"size\": 1,\n  \"price\": \"500.00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Envía una orden LIMIT con precio específico. Si el usuario cuenta con saldo suficiente, entra en el libro de órdenes con estado `NEW` e incrementa `reservedCash` por el valor total de la orden (`size * price`), guardando el ID para la prueba de cancelación."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.status === 'NEW') {",
+                  "    pm.collectionVariables.set(\"lastCreatedOrderId\", json.id);",
+                  "    console.log(\"Guardado lastCreatedOrderId:\", json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Cancelación de Órdenes",
+      "item": [
+        {
+          "name": "Cancelar Orden Pendiente (NEW -> CANCELLED)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders/{{lastCreatedOrderId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders", "{{lastCreatedOrderId}}", "cancel"]
+            },
+            "description": "Cancela la orden en estado `NEW` creada en el paso anterior. Libera de inmediato los fondos o acciones reservados en el snapshot y actualiza el estado a `CANCELLED`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 200 (o 404/409 si no hay orden pendiente)\", function () {",
+                  "    pm.expect([200, 404, 409]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"CANCELLED\");",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Re-intentar Cancelar la misma Orden (Conflicto 409)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders/{{lastCreatedOrderId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders", "{{lastCreatedOrderId}}", "cancel"]
+            },
+            "description": "Intentar cancelar una orden que ya fue cancelada (o ejecutada) debe devolver `409 Conflict`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 409 Conflict\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 - Casos Borde, Idempotencia y Validaciones de Error",
+      "item": [
+        {
+          "name": "Idempotencia: Re-envío Idéntico con mismo transactionId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"idempotent-key-001\",\n  \"instrumentId\": {{arsInstrumentId}},\n  \"side\": \"CASH_IN\",\n  \"type\": \"MARKET\",\n  \"size\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Al enviar por primera vez devuelve 201 Created. Al re-enviar el mismo payload con el mismo transactionId devuelve 200 OK sin duplicar el movimiento."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Respuesta exitosa idempotente (201 en primera llamada, 200 en reintento)\", function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Idempotencia: Conflicto 409 por Payload Discordante",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"idempotent-key-001\",\n  \"instrumentId\": {{arsInstrumentId}},\n  \"side\": \"CASH_IN\",\n  \"type\": \"MARKET\",\n  \"size\": 9999\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Reutilizar un `transactionId` existente pero con un payload diferente (ej. tamaño distinto) debe ser rechazado con un error `409 Conflict`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Conflicto de idempotencia rechazado con 409\", function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rechazo por Saldo Insuficiente (Status REJECTED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{instrumentId}},\n  \"side\": \"BUY\",\n  \"type\": \"MARKET\",\n  \"size\": 2000000000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Una orden con fondos insuficientes se registra con HTTP 201 pero con estado `REJECTED`, sin modificar el snapshot de fondos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "pm.test(\"La orden fue rechazada por falta de saldo\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"REJECTED\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validación 400: Enviar simultáneamente size y amount",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{instrumentId}},\n  \"side\": \"BUY\",\n  \"type\": \"MARKET\",\n  \"size\": 10,\n  \"amount\": \"5000.00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "La API exige enviar exactamente uno entre `size` o `amount`. Si se envían ambos o ninguno, responde con `400 Bad Request`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Validación 400: Orden LIMIT sin price",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{$guid}}\",\n  \"instrumentId\": {{instrumentId}},\n  \"side\": \"BUY\",\n  \"type\": \"LIMIT\",\n  \"size\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "orders"]
+            },
+            "description": "Una orden LIMIT debe contener obligatoriamente el campo `price`. Si no se provee, responde con `400 Bad Request`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error 404: Usuario Inexistente en Portfolio",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/999999999/portfolio",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "999999999", "portfolio"]
+            },
+            "description": "Consultar el portfolio de un ID de usuario inexistente debe responder con `404 Not Found`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error 400: Query de Búsqueda Vacía",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/instruments?query=",
+              "host": ["{{baseUrl}}"],
+              "path": ["instruments"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": ""
+                }
+              ]
+            },
+            "description": "Consultar `/instruments` con query vacía debe responder con `400 Bad Request`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code es 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

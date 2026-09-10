@@ -1,5 +1,5 @@
 import { rebuildSnapshot } from '../dist/snapshot/domain/account-snapshot.js';
-import { InvalidDatabaseIdError } from '../dist/shared/domain/database-validator-helper.js';
+import { InvalidIdError } from '../dist/shared/domain/id-validator-helper.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { calculatePortfolio, PortfolioPriceUnavailableError } from '../dist/portfolio/domain/portfolio.js';
@@ -62,7 +62,7 @@ test('use case distinguishes missing users from empty portfolios and rejects inv
   assert.equal((await empty.execute(2)).totalValue, '0.00');
   const missing = new GetPortfolioUseCase({ async findByUserId() { return null; } });
   await assert.rejects(missing.execute(99), PortfolioUserNotFoundError);
-  for (const id of [1.5, NaN, 'abc']) await assert.rejects(empty.execute(id), InvalidDatabaseIdError);
+  for (const id of [1.5, NaN, 'abc']) await assert.rejects(empty.execute(id), InvalidIdError);
 });
 
 

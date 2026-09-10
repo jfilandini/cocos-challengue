@@ -1,5 +1,5 @@
 import { serializeOrderRequest } from './order-idempotency';
-import { validateIdInput } from '../../shared/domain/database-validator-helper';
+import { validateId } from '../../shared/domain/id-validator-helper';
 import { InstrumentType } from '../../shared/domain/instrument-type';
 import { Currency } from '../../shared/domain/currency';
 import { isCashTransfer, isInstrumentOrder } from '../../shared/domain/order-side';
@@ -14,7 +14,7 @@ export class SubmitOrderUseCase {
   
 
   async execute(userIdInput: unknown, body: unknown) {
-    const userId = validateIdInput(userIdInput);
+    const userId = validateId(userIdInput);
     const request = validateOrder(body);
     const originalRequest = serializeOrderRequest(request);
     return this.orders.withUserLock(userId, async transaction => {
