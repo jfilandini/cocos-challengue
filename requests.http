@@ -2,6 +2,9 @@
 @userId = 1
 # Reutilizar transactionId solo para reintentar la misma orden. Cambiarlo para una operación nueva.
 
+### Búsqueda paginada de activos
+GET {{baseUrl}}/instruments?query=molin&page=1&limit=2
+
 ### Portfolio antes de operar
 GET {{baseUrl}}/users/{{userId}}/portfolio
 
