@@ -1,9 +1,9 @@
+import { ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY, type AccountSnapshotRepositoryFactory } from '../../../snapshot/application/ports/account-snapshot.repository';
 import { Prisma } from '../../../generated/prisma/client';
 import { z } from 'zod';
 import { toSnapshotOrder } from '../../../snapshot/infrastructure/persistence/snapshot-order.mapper';
-import { initializeAccountSnapshot, readAccountSnapshot, saveAccountSnapshot } from '../../../snapshot/infrastructure/persistence/account-snapshot.repository';
 import { applyOrder, cancelPendingOrder, PortfolioDataError } from '../../../snapshot/domain/account-snapshot';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
 import { isOrderStatus, OrderStatus } from '../../../shared/domain/order-status';
 import { OrderCancellationError, OrderIdempotencyConflictError, OrderResourceNotFoundError } from '../../domain/order';
@@ -17,10 +17,15 @@ const transactionConstraintMetadata = z.object({
 
 @Injectable()
 export class PrismaOrderRepository implements OrderRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY)
+    private readonly snapshots: AccountSnapshotRepositoryFactory<Prisma.TransactionClient>,
+  ) {}
 
   withUserLock<T>(userId: bigint, work: (transaction: OrderTransaction) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async tx => {
+      const snapshots = this.snapshots.forTransaction(tx);
       const users = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       if (!users.length) throw new OrderResourceNotFoundError('User not found');
       return work({
@@ -37,26 +42,26 @@ export class PrismaOrderRepository implements OrderRepository {
           return { id: order.id, status: order.status };
         },
         async cancel(id) {
-          const snapshot = await readAccountSnapshot(tx, userId) ?? await initializeAccountSnapshot(tx, userId);
+          const snapshot = await snapshots.read(userId) ?? await snapshots.initialize(userId);
           const order = await tx.order.findFirst({ where: { id, userId, status: OrderStatus.NEW }, include: { instrument: { select: { ticker: true, type: true } } } });
           if (!order) throw new OrderCancellationError('Only NEW orders can be cancelled');
           const next = cancelPendingOrder(snapshot, toSnapshotOrder(order));
           const result = await tx.order.updateMany({ where: { id, userId, status: OrderStatus.NEW }, data: { status: OrderStatus.CANCELLED } });
           if (result.count !== 1) throw new OrderCancellationError('Only NEW orders can be cancelled');
-          await saveAccountSnapshot(tx, userId, next);
+          await snapshots.save(userId, next);
           return { id, userId, status: OrderStatus.CANCELLED };
         },
         initializeSnapshot() {
-          return initializeAccountSnapshot(tx, userId);
+          return snapshots.initialize(userId);
         },
         readSnapshot() {
-          return readAccountSnapshot(tx, userId);
+          return snapshots.read(userId);
         },
         async save(draft, transactionId) {
-          const snapshot = await readAccountSnapshot(tx, userId) ?? await initializeAccountSnapshot(tx, userId);
+          const snapshot = await snapshots.read(userId) ?? await snapshots.initialize(userId);
           const datetime = new Date();
           const saved = await tx.order.create({ data: { ...draft, transactionId, datetime } });
-          if (draft.status !== OrderStatus.REJECTED) await saveAccountSnapshot(tx, userId, applyOrder(snapshot, draft));
+          if (draft.status !== OrderStatus.REJECTED) await snapshots.save(userId, applyOrder(snapshot, draft));
           return { ...draft, transactionId, id: saved.id, datetime: datetime.toISOString() };
         },
       });

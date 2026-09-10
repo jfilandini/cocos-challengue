@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { PrismaService } from '../dist/shared/infrastructure/database/prisma.service.js';
-import { rebuildAccountSnapshot } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
+import { PrismaAccountSnapshotRepository } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
 
 const prisma = new PrismaService();
 try {
@@ -18,7 +18,7 @@ try {
     for (const user of users) {
       await prisma.$transaction(async tx => {
         const locked = await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`;
-        if (locked.length) await rebuildAccountSnapshot(tx, user.id);
+        if (locked.length) await new PrismaAccountSnapshotRepository(tx).rebuild(user.id);
       }, { isolationLevel: 'ReadCommitted', timeout: 120000, maxWait: 10000 });
       count++;
     }

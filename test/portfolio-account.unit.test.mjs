@@ -1,3 +1,4 @@
+import { PrismaAccountSnapshotRepositoryFactory } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
 import { rebuildSnapshot } from '../dist/snapshot/domain/account-snapshot.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -30,6 +31,6 @@ test('repository rejects duplicate account matches before reading any movements'
     async $transaction(callback) {
       return callback({ user: { async findMany() { return [{ id: 1n }, { id: 2n }]; } } });
     },
-  });
+  }, new PrismaAccountSnapshotRepositoryFactory());
   await assert.rejects(repository.findByAccountNumber('duplicate'), AmbiguousPortfolioAccountError);
 });

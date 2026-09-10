@@ -8,7 +8,7 @@ import { SubmitOrderUseCase } from '../dist/orders/application/submit-order.use-
 import { PrismaOrderRepository } from '../dist/orders/infrastructure/persistence/prisma-order.repository.js';
 import { PrismaInstrumentRepository } from '../dist/instruments/infrastructure/persistence/prisma-instrument.repository.js';
 import { PrismaPortfolioRepository } from '../dist/portfolio/infrastructure/persistence/prisma-portfolio.repository.js';
-import { rebuildAccountSnapshot } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
+import { PrismaAccountSnapshotRepository, PrismaAccountSnapshotRepositoryFactory } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
 import { PrismaService } from '../dist/shared/infrastructure/database/prisma.service.js';
 
 let app;
@@ -322,7 +322,7 @@ test('persisted snapshots match reconstruction after fills, reservations, reject
   for (let repeat = 0; repeat < 2; repeat++) {
     await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${id} FOR UPDATE`;
-      await rebuildAccountSnapshot(tx, id);
+      await new PrismaAccountSnapshotRepository(tx).rebuild(id);
     });
     assert.deepEqual(snapshotState(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } })), snapshotState(stored));
   }
@@ -333,7 +333,7 @@ test('orders and snapshot changes roll back together on a failed transaction', a
   await portfolio(id);
   const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
   const ordersBefore = await prisma.order.count({ where: { userId: id } });
-  const repository = new PrismaOrderRepository(prisma);
+  const repository = new PrismaOrderRepository(prisma, new PrismaAccountSnapshotRepositoryFactory());
   await assert.rejects(repository.withUserLock(id, async transaction => {
     await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 40, price: '1' }, randomUUID());
     throw new Error('Simulated transaction failure');
@@ -347,13 +347,13 @@ test('bootstrap streams more than one ledger page; subsequent reads and submissi
   await prisma.order.createMany({ data: Array.from({ length: 1005 }, (_, index) => ({ userId: id, instrumentId: 66n, side: 'CASH_IN', type: 'MARKET', status: 'FILLED', size: 1, price: '1', datetime: new Date(index % 2 ? '2023-01-01' : '2023-01-02') })) });
   let historyQueries = 0;
   const tracked = prisma.$extends({ query: { order: { async findMany({ args, query }) { historyQueries++; return query(args); } } } });
-  const portfolios = new PrismaPortfolioRepository(tracked);
+  const portfolios = new PrismaPortfolioRepository(tracked, new PrismaAccountSnapshotRepositoryFactory());
   const first = await portfolios.findByUserId(id);
   assert.equal(first.account.settledCash, '1005');
   assert.equal(historyQueries, 2);
   historyQueries = 0;
   await portfolios.findByUserId(id);
-  await new PrismaOrderRepository(tracked).withUserLock(id, async transaction => {
+  await new PrismaOrderRepository(tracked, new PrismaAccountSnapshotRepositoryFactory()).withUserLock(id, async transaction => {
     assert.equal((await transaction.readSnapshot()).settledCash, '1005');
     await transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 5, price: '1' }, randomUUID());
   });
@@ -413,7 +413,7 @@ test('a failed snapshot write rolls back order creation and cancellation', async
   const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
   const count = await prisma.order.count({ where: { userId: id } });
   const failing = prisma.$extends({ query: { accountSnapshot: { upsert() { throw new Error('Snapshot write failed'); } } } });
-  const repository = new PrismaOrderRepository(failing);
+  const repository = new PrismaOrderRepository(failing, new PrismaAccountSnapshotRepositoryFactory());
   await assert.rejects(repository.withUserLock(id, transaction => transaction.save({ userId: id, instrumentId: 66n, side: 'CASH_OUT', type: 'MARKET', status: 'FILLED', size: 10, price: '1' }, randomUUID())), /Snapshot write failed/);
   assert.equal(await prisma.order.count({ where: { userId: id } }), count);
   await assert.rejects(repository.withUserLock(id, transaction => transaction.cancel(BigInt(pending.id))), /Snapshot write failed/);
@@ -524,7 +524,7 @@ test('a rolled-back submission does not consume its transaction ID', async () =>
   const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
   const body = { ...transfer, size: 50, transactionId: randomUUID() };
   const failing = prisma.$extends({ query: { accountSnapshot: { upsert() { throw new Error('Snapshot write failed'); } } } });
-  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(failing), new PrismaInstrumentRepository(failing));
+  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(failing, new PrismaAccountSnapshotRepositoryFactory()), new PrismaInstrumentRepository(failing));
   await assert.rejects(useCase.execute(id, body), /Snapshot write failed/);
   assert.equal(await prisma.order.count({ where: { userId: id, transactionId: body.transactionId } }), 0);
   assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
@@ -562,7 +562,7 @@ test('a global unique violation after simultaneous lookups becomes a conflict an
     }
     return result;
   } } } });
-  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(tracked), new PrismaInstrumentRepository(tracked));
+  const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(tracked, new PrismaAccountSnapshotRepositoryFactory()), new PrismaInstrumentRepository(tracked));
   const results = await Promise.allSettled(users.map(id => useCase.execute(id, { ...market, transactionId })));
   assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
   const failure = results.find(r => r.status === 'rejected').reason;
@@ -574,7 +574,7 @@ test('a global unique violation after simultaneous lookups becomes a conflict an
 
 test('snapshot lookup is read-only and initialization is explicit and transactional', async () => {
   const id = await user(100);
-  const repository = new PrismaOrderRepository(prisma);
+  const repository = new PrismaOrderRepository(prisma, new PrismaAccountSnapshotRepositoryFactory());
   await repository.withUserLock(id, async transaction => {
     assert.equal(await transaction.readSnapshot(), null);
   });

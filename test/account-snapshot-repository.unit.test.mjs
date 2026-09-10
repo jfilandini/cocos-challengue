@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readAccountSnapshot, initializeAccountSnapshot } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
+import { PrismaAccountSnapshotRepository } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
 
 test('reading a missing snapshot returns null without reading orders or writing', async () => {
   const tx = {
@@ -10,7 +10,7 @@ test('reading a missing snapshot returns null without reading orders or writing'
     },
     order: { async findMany() { assert.fail('A read must not replay orders'); } },
   };
-  assert.equal(await readAccountSnapshot(tx, 1n), null);
+  assert.equal(await new PrismaAccountSnapshotRepository(tx).read(1n), null);
 });
 
 test('initializing an existing snapshot preserves it without replaying or writing', async () => {
@@ -21,5 +21,5 @@ test('initializing an existing snapshot preserves it without replaying or writin
     },
     order: { async findMany() { assert.fail('Existing snapshot must not be rebuilt'); } },
   };
-  assert.deepEqual(await initializeAccountSnapshot(tx, 1n), { settledCash: '100', reservedCash: '20', positions: [] });
+  assert.deepEqual(await new PrismaAccountSnapshotRepository(tx).initialize(1n), { settledCash: '100', reservedCash: '20', positions: [] });
 });
