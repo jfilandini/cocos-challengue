@@ -36,7 +36,7 @@ Después de cambiar el código, ejecutar nuevamente `docker compose up --build -
 
 ### Lint
 
-La configuración `eslint.config.mjs` usa ESLint 10 y typescript-eslint con análisis de tipos. Revisa código TypeScript, tests JavaScript y configuración; excluye `dist`, `node_modules`, cobertura y el cliente Prisma generado.
+La configuración `eslint.config.mjs` usa ESLint 10 y typescript-eslint con análisis de tipos. Revisa código TypeScript, tests TypeScript y configuración; excluye `dist`, `.test-dist`, `node_modules`, cobertura y el cliente Prisma generado.
 
 ```sh
 # Después de npm ci, generar el cliente para disponer de sus tipos:
@@ -71,7 +71,7 @@ npm run check
 
 Este comando ejecuta en secuencia:
 1. `npm run lint`: Chequeo de ESLint 10 con reglas arquitectónicas estrictas (aislamiento de capas de dominio y aplicación sin dependencias de infraestructura ni frameworks) y tipos.
-2. `npm run typecheck`: Validación estricta de tipos con el compilador de TypeScript (`tsc --noEmit`).
+2. `npm run typecheck`: Validación estricta de tipos de la aplicación y los tests con el compilador de TypeScript (`tsc --noEmit`).
 3. `npm run test:unit`: Suite de pruebas unitarias sobre cálculos de portfolio, órdenes y lógica de negocio.
 
 > **Decisión de diseño en desarrollo local:**
@@ -156,7 +156,7 @@ Si la aplicación fuera propietaria del esquema y responsable de su evolución, 
 
 El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
 
-La prueba funcional de envío de órdenes está en `test/e2e/orders.e2e.test.mjs` y usa una base de pruebas aislada.
+La prueba funcional de envío de órdenes está en `test/e2e/orders.e2e.test.ts` y usa una base de pruebas aislada.
 
 ## Portfolio
 
