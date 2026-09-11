@@ -29,7 +29,7 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
     if (users.length > 1) throw new AmbiguousPortfolioAccountError('Account number matches multiple users');
     const userId = users[0].id;
 
-    // Fast path: non-blocking read via PostgreSQL MVCC (no locks)
+    
     let account = await this.snapshots.forTransaction(this.prisma).read(userId);
 
     // Slow path: acquire exclusive user lock only if snapshot has not been generated yet

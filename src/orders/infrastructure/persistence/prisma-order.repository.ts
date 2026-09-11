@@ -4,7 +4,7 @@ import { ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY, type AccountSnapshotRepositoryFact
 import { Prisma } from '../../../generated/prisma/client';
 import { z } from 'zod';
 import { toSnapshotOrder } from '../../../snapshot/infrastructure/persistence/snapshot-order.mapper';
-import { applyOrder, cancelPendingOrder, PortfolioDataError } from '../../../snapshot/domain/account-snapshot';
+import { applyOrder, releaseOrderReservation, PortfolioDataError } from '../../../snapshot/domain/account-snapshot';
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
 import { isOrderStatus, OrderStatus } from '../../../shared/domain/order-status';
@@ -58,7 +58,7 @@ export class PrismaOrderRepository implements OrderRepository {
           const snapshot = await snapshots.read(userId) ?? await snapshots.initialize(userId);
           const order = await tx.order.findFirst({ where: { id, userId, status: OrderStatus.NEW }, include: { instrument: { select: { ticker: true, type: true } } } });
           if (!order) throw new OrderCancellationError('Only NEW orders can be cancelled');
-          const next = cancelPendingOrder(snapshot, toSnapshotOrder(order));
+          const next = releaseOrderReservation(snapshot, toSnapshotOrder(order));
           const result = await tx.order.updateMany({ where: { id, userId, status: OrderStatus.NEW }, data: { status: OrderStatus.CANCELLED } });
           if (result.count !== 1) throw new OrderCancellationError('Only NEW orders can be cancelled');
           await snapshots.save(userId, next);

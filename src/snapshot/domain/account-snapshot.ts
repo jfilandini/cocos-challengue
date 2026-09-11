@@ -77,8 +77,7 @@ export function applyOrder(snapshot: AccountSnapshot, order: SnapshotOrder): Acc
   };
 }
 
-/** Cancellation releases only the original NEW order's reservation. */
-export function cancelPendingOrder(snapshot: AccountSnapshot, order: SnapshotOrder): AccountSnapshot {
+export function releaseOrderReservation(snapshot: AccountSnapshot, order: SnapshotOrder): AccountSnapshot {
   if (order.status !== OrderStatus.NEW) throw new PortfolioDataError('Only a NEW order has a reservation to release');
   validateOrder(order);
   return changeReservation(snapshot, order, -1);

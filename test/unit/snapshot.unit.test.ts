@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   applyOrder,
-  cancelPendingOrder,
+  releaseOrderReservation,
   emptySnapshot,
   rebuildSnapshot,
   PortfolioDataError,
@@ -59,7 +59,7 @@ void test('applyOrder ignores REJECTED and CANCELLED orders', () => {
   assert.deepEqual(applyOrder(snapshot, cancelled), snapshot);
 });
 
-void test('applyOrder and cancelPendingOrder handle cash and share reservations for NEW limit orders', () => {
+void test('applyOrder and releaseOrderReservation handle cash and share reservations for NEW limit orders', () => {
   let snapshot = { settledCash: '1000', reservedCash: '0', positions: [{ instrumentId: '1', quantity: 10, reservedQuantity: 0, cost: '100', inconsistent: false }] };
 
   // Pending BUY reserves cash
@@ -75,7 +75,7 @@ void test('applyOrder and cancelPendingOrder handle cash and share reservations 
   assert.equal(snapshot.reservedCash, '100');
 
   // Cancelling pending BUY releases reserved cash
-  snapshot = cancelPendingOrder(snapshot, pendingBuy);
+  snapshot = releaseOrderReservation(snapshot, pendingBuy);
   assert.equal(snapshot.reservedCash, '0');
 
   // Pending SELL reserves shares
@@ -91,11 +91,11 @@ void test('applyOrder and cancelPendingOrder handle cash and share reservations 
   assert.equal(snapshot.positions.find(p => p.instrumentId === '1')?.reservedQuantity, 4);
 
   // Cancelling pending SELL releases reserved shares
-  snapshot = cancelPendingOrder(snapshot, pendingSell);
+  snapshot = releaseOrderReservation(snapshot, pendingSell);
   assert.equal(snapshot.positions.find(p => p.instrumentId === '1')?.reservedQuantity, 0);
 });
 
-void test('cancelPendingOrder throws PortfolioDataError for non-NEW orders', () => {
+void test('releaseOrderReservation throws PortfolioDataError for non-NEW orders', () => {
   const snapshot = emptySnapshot();
   const filled = {
     instrumentId: 1n,
@@ -105,7 +105,7 @@ void test('cancelPendingOrder throws PortfolioDataError for non-NEW orders', () 
     status: OrderStatus.FILLED,
     type: OrderType.LIMIT,
   };
-  assert.throws(() => cancelPendingOrder(snapshot, filled), PortfolioDataError);
+  assert.throws(() => releaseOrderReservation(snapshot, filled), PortfolioDataError);
 });
 
 void test('applyOrder throws PortfolioDataError on invalid order size or price', () => {

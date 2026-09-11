@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SubmitOrderUseCase } from '../../src/orders/application/submit-order.use-case.js';
 import { CancelOrderUseCase } from '../../src/orders/application/cancel-order.use-case.js';
-import { serializeOrderRequest } from '../../src/orders/application/order-idempotency.js';
+import { serializeOrderRequest } from '../../src/orders/application/order-request-serializer.js';
 import { OrderCancellationError, OrderIdempotencyConflictError, OrderResourceNotFoundError } from '../../src/orders/domain/order.js';
 
 const request = { transactionId: 'unit-order', instrumentId: 1n, side: OrderSide.BUY, type: OrderType.MARKET, size: 2 };

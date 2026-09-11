@@ -49,6 +49,20 @@ export interface SubmittedOrder extends Omit<OrderDraft, 'status'> {
   datetime: string;
 }
 
+function hasSufficientCash(
+  availableCash: Decimal,
+  price: Decimal,
+  size: number,
+  requestedAmount?: string,
+): boolean {
+  return availableCash.gte(price.mul(size))
+    && (requestedAmount === undefined || availableCash.gte(requestedAmount));
+}
+
+function hasSufficientShares(availableShares: number, size: number): boolean {
+  return availableShares >= size;
+}
+
 function generateCashInOrderDraft(
   userId: bigint,
   request: OrderRequest,
@@ -97,7 +111,7 @@ function generateInstrumentTradeOrderDraft(
 ): OrderDraft {
   const rawPrice = request.type === OrderType.LIMIT ? request.price : close;
   if (!rawPrice || !new Amount(rawPrice).isFinite() || !new Amount(rawPrice).gt(0)) {
-    throw new OrderPriceUnavailableError('Latest market price is unavailable');
+    throw new OrderPriceUnavailableError('Latest market price is unavailable or limit price is invalid');
   }
   const price = new Amount(rawPrice);
   const quantity = request.size === undefined ? new Amount(request.amount!).div(price).floor() : new Amount(request.size);
@@ -109,8 +123,8 @@ function generateInstrumentTradeOrderDraft(
   const availableShares = (position?.quantity ?? 0) - (position?.reservedQuantity ?? 0);
 
   const sufficient = request.side === OrderSide.BUY
-    ? availableCash.gte(price.mul(size)) && (request.amount === undefined || availableCash.gte(request.amount))
-    : availableShares >= size;
+    ? hasSufficientCash(availableCash, price, size, request.amount)
+    : hasSufficientShares(availableShares, size);
 
   return {
     userId,
