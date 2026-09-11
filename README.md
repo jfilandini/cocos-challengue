@@ -134,6 +134,8 @@ El controlador invoca el caso de uso y convierte errores de entrada en HTTP 400.
 
 `npm run test:unit` prueba los casos de uso y cálculos sin iniciar NestJS ni PostgreSQL. `npm run test:instruments` ejecuta las pruebas de búsqueda; `npm test` ejecuta toda la suite, incluyendo las funcionales con la base del challenge.
 
+La separación de pruebas por responsabilidad, los escenarios de integración y los comandos de ejecución se detallan en [`test/README.md`](test/README.md).
+
 - `src/shared/infrastructure/database`: proveedor Prisma compartido, con conexión al iniciar y desconexión al cerrar.
 - `src/shared/infrastructure/http/health.controller.ts`: consulta `SELECT 1` mediante Prisma; responde 503 si la base no está disponible. Es una comprobación de infraestructura, sin lógica de negocio.
 - `prisma/schema.prisma`: mapeo de las tablas originales y de `account_snapshots`, el estado derivado de cada cuenta.
@@ -144,7 +146,13 @@ PostgreSQL convierte los identificadores sin comillas a minúsculas. Los modelos
 
 Prisma 7 utiliza el adaptador PostgreSQL y genera el cliente en `src/generated/prisma`, excluido de Git y generado durante el build. Referencia: [configuración de Prisma 7](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7).
 
-El esquema se inicializa mediante `docker/postgres/database.sql`. En esta etapa del challenge, los cambios de esquema se realizan directamente en ese archivo y se reflejan en `prisma/schema.prisma`. El SQL de inicialización solo se ejecuta sobre un volumen vacío.
+### Gestión del esquema y base de datos preexistente
+
+El diseño toma la base proporcionada como punto de partida y adopta un supuesto conservador: pertenece a un ecosistema externo y la aplicación no es responsable de administrar su esquema ni tiene autoridad para modificarlo automáticamente. Por eso se respetan los nombres y convenciones existentes mediante los mapeos de Prisma, y no se utiliza **Prisma Migrate** para gestionar su evolución. Este supuesto se refiere a la administración del esquema, no a las lecturas y escrituras de negocio que realiza la API.
+
+La entrega incluye ajustes de esquema necesarios para la solución, documentados en `docker/postgres/database.sql` y reflejados en `prisma/schema.prisma`; no implica que la base original permanezca intacta. En un entorno administrado externamente, esos ajustes deberían coordinarse y aplicarse por el responsable de la base antes de desplegar la aplicación. Para reproducir el challenge localmente, el SQL inicializa el esquema únicamente sobre un volumen vacío; la aplicación no aplica esos cambios al arrancar.
+
+Si la aplicación fuera propietaria del esquema y responsable de su evolución, se habría utilizado **Prisma Migrate** para versionar los cambios y aplicarlos de forma controlada durante el despliegue.
 
 El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
 
@@ -335,3 +343,17 @@ En un esquema distribuido con bases de datos independientes por servicio, para c
 ### 3. Mantenimiento y Auditoría de Dependencias
 
 - **Resolución de avisos de `npm audit`:** Resolver las advertencias de dependencias transitivas asociadas a la CLI de Prisma cuando se publiquen parches compatibles upstream, evitando aplicar *downgrades* mayores forzados.
+
+### 4. Auditoría de Operaciones
+
+Actualmente se conserva el estado de las órdenes, pero no un historial completo de sus transiciones. Para un entorno productivo, se propone incorporar un registro de auditoría **append-only** (sin modificar ni eliminar registros previos) de los eventos relevantes de negocio, como la creación, ejecución, rechazo y cancelación de órdenes y los movimientos de fondos. Cada registro incluiría la operación, el actor, la fecha, el identificador de correlación y los estados anterior y nuevo, cuando corresponda. Este historial complementaría los logs técnicos de la aplicación.
+
+La persistencia del registro de auditoría debería ser atómica con la operación de negocio. Inicialmente podría almacenarse en una tabla de PostgreSQL, sin requerir una base separada. Si se publica a un sistema externo, podría utilizarse el patrón **transactional outbox**, guardando el evento en la misma transacción y publicándolo posteriormente con reintentos y deduplicación.
+
+### 5. Normalización de Posiciones del Snapshot
+
+Actualmente `account_snapshots` almacena las posiciones de cada usuario en un campo JSON. Esta representación simplifica la persistencia para el alcance del challenge, aunque la implementación lee el conjunto de posiciones y vuelve a guardar el JSON completo cuando cambia una posición.
+
+Si aumenta la cantidad de posiciones por cuenta o se necesitan consultas individuales, se podría migrar a una tabla `account_snapshot_positions`, con una fila por usuario e instrumento y una clave única sobre `(user_id, instrument_id)`. Cada fila almacenaría cantidad, cantidad reservada, costo acumulado e indicador de historial inconsistente. Esto permitiría consultar y actualizar la posición afectada sin reescribir las demás, además de incorporar claves foráneas y restricciones sobre los datos.
+
+Los saldos y reservas de efectivo permanecerían en `account_snapshots`. La actualización de la orden, el efectivo y las posiciones debería conservarse en una misma transacción; esta normalización no elimina por sí sola la necesidad de coordinar las operaciones concurrentes sobre los recursos del usuario. Las posiciones seguirían siendo estado derivado del registro de órdenes.

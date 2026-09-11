@@ -14,7 +14,7 @@
     "test:unit": "npm run build && node --test test/unit/*.unit.test.mjs",
     "test:e2e": "npm run build && node --env-file=.env.test.example --env-file-if-exists=.env.test --test test/e2e/*.e2e.test.mjs",
     "test": "npm run build && node --env-file=.env.test.example --env-file-if-exists=.env.test --test test/unit/*.unit.test.mjs test/e2e/*.e2e.test.mjs",
-    "test:orders": "npm run build && node --env-file=.env.test.example --env-file-if-exists=.env.test --test test/unit/orders.unit.test.mjs test/e2e/orders.e2e.test.mjs",
+    "test:orders": "npm run build && node --env-file=.env.test.example --env-file-if-exists=.env.test --test test/unit/orders*.unit.test.mjs test/e2e/orders.e2e.test.mjs",
     "test:db:up": "docker compose -f compose.test.yaml up -d --wait",
     "test:db:down": "docker compose -f compose.test.yaml down",
     "test:instruments": "npm run build && node --env-file-if-exists=.env --test test/e2e/instruments.e2e.test.mjs test/unit/search-instruments.unit.test.mjs",
