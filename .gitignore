@@ -8,3 +8,4 @@ src/generated/
 *.log
 .DS_Store
 coverage/
+.test-dist/

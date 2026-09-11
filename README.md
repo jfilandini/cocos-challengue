@@ -1,7 +1,7 @@
 # Cocos Challenge Backend
 
 Base inicial con Node.js 24, TypeScript, NestJS 11, Prisma 7 y PostgreSQL 17.
-Incluye conexión a la base, `GET /health`, búsqueda de activos con `GET /instruments` y portfolio con `GET /users/:userId/portfolio`.
+API para buscar instrumentos financieros, consultar portfolios, enviar y cancelar órdenes, y registrar movimientos de fondos.
 
 ## Ejecutar con Docker
 
@@ -34,20 +34,6 @@ Después de cambiar el código, ejecutar nuevamente `docker compose up --build -
 
 ## Desarrollo local
 
-### Lint
-
-La configuración `eslint.config.mjs` usa ESLint 10 y typescript-eslint con análisis de tipos. Revisa código TypeScript, tests JavaScript y configuración; excluye `dist`, `node_modules`, cobertura y el cliente Prisma generado.
-
-```sh
-# Después de npm ci, generar el cliente para disponer de sus tipos:
-npm run prisma:generate
-npm run lint
-# Aplicar las correcciones automáticas disponibles:
-npm run lint:fix
-```
-
-Se detectan promesas sin manejar, usos incorrectos de async, variables sin usar e imports de tipos inconsistentes. Los archivos de dominio y aplicación no pueden importar NestJS, Prisma, infraestructura ni código generado. El comando falla ante errores o advertencias. El formato con Prettier queda fuera de este lint inicial.
-
 Usar Node.js 24 (`nvm use` si tenés nvm), y copiar `.env.example` a `.env`.
 
 ```sh
@@ -61,6 +47,20 @@ Si la API de Docker está corriendo, detenerla con `docker compose stop api` ant
 
 Para recompilar automáticamente, ejecutar `npm run build:watch` en una terminal y `npm run dev` (o `npm run start:dev`) en otra, después del primer build. Este último reinicia Node cuando cambia el código compilado.
 
+### Lint
+
+La configuración `eslint.config.mjs` usa ESLint 10 y typescript-eslint con análisis de tipos. Revisa código TypeScript, tests TypeScript y configuración; excluye `dist`, `.test-dist`, `node_modules`, cobertura y el cliente Prisma generado.
+
+```sh
+# Después de npm ci, generar el cliente para disponer de sus tipos:
+npm run prisma:generate
+npm run lint
+# Aplicar las correcciones automáticas disponibles:
+npm run lint:fix
+```
+
+Se detectan promesas sin manejar, usos incorrectos de async, variables sin usar e imports de tipos inconsistentes. Los archivos de dominio y aplicación no pueden importar NestJS, Prisma, infraestructura ni código generado. El comando falla ante errores o advertencias. El formato con Prettier queda fuera de este lint inicial.
+
 ### Verificación integral y calidad de código
 
 Para validar el proyecto de forma completa antes de commitear o entregar cambios:
@@ -70,8 +70,9 @@ npm run check
 ```
 
 Este comando ejecuta en secuencia:
+
 1. `npm run lint`: Chequeo de ESLint 10 con reglas arquitectónicas estrictas (aislamiento de capas de dominio y aplicación sin dependencias de infraestructura ni frameworks) y tipos.
-2. `npm run typecheck`: Validación estricta de tipos con el compilador de TypeScript (`tsc --noEmit`).
+2. `npm run typecheck`: Validación estricta de tipos de la aplicación y los tests con el compilador de TypeScript (`tsc --noEmit`).
 3. `npm run test:unit`: Suite de pruebas unitarias sobre cálculos de portfolio, órdenes y lógica de negocio.
 
 > **Decisión de diseño en desarrollo local:**
@@ -89,85 +90,49 @@ npm run build
 npm run prisma:studio
 ```
 
-## Buscar activos
+## Endpoints
+
+Los ejemplos usan `http://localhost:3000`; ajustar el puerto según `API_PORT`.
+
+### Estado del servicio — `GET /health`
+
+Comprueba la conexión con PostgreSQL. Devuelve HTTP 200 con `{"status":"ok","database":"up"}` o HTTP 503 si la base no está disponible.
 
 ```sh
-curl 'http://localhost:3000/instruments?query=ypf'
-curl 'http://localhost:3000/instruments?query=molinos'
+curl 'http://localhost:3000/health'
+```
+
+### Buscar instrumentos financieros — `GET /instruments`
+
+```sh
+# Primera página, hasta 10 resultados
+curl 'http://localhost:3000/instruments?query=ypf&page=1&limit=10'
+# Segunda página de coincidencias por nombre
+curl 'http://localhost:3000/instruments?query=molin&page=2&limit=2'
 ```
 
 Usar el puerto configurado en `API_PORT` (3001 si se eligió ese valor).
 El parámetro `query` es obligatorio: debe contener texto luego de quitar espacios al inicio y al final. Busca coincidencias parciales por ticker **o** nombre, sin distinguir mayúsculas y minúsculas. Los acentos se conservan y los caracteres `%`, `_` y `\` se buscan literalmente.
 
-La búsqueda acepta `page` (por defecto `1`) y `limit` (por defecto `20`, máximo `100`), ambos enteros positivos. Ejemplo: `GET /instruments?query=molin&page=2&limit=2`.
+La búsqueda es **paginada**:
 
-La respuesta es `{ items, total, page, limit, totalPages }`. `items` contiene objetos `{ id, ticker, name, type }` ordenados por ticker e ID. `total` cuenta todas las coincidencias y `totalPages` indica la cantidad de páginas. Esta estructura reemplaza el array anterior; los consumidores deben leer `items`. Incluye acciones y monedas: ARS puede encontrarse por ticker (`ars`) o nombre (`pesos`). Si no hay coincidencias, devuelve `items: []`, `total: 0` y `totalPages: 0`. Una página posterior a la última devuelve `items: []` y conserva los totales. Una búsqueda ausente, vacía o inválida, o parámetros de paginación inválidos, devuelve HTTP 400.
+| Parámetro | Descripción |
+| --- | --- |
+| `query` | Ticker o nombre a buscar; obligatorio. |
+| `page` | Página solicitada, entero positivo; por defecto `1`. |
+| `limit` | Resultados por página, entero entre `1` y `100`; por defecto `20`. |
 
-Las pruebas funcionales usan la base con el SQL original y no modifican datos:
+La respuesta es `{ items, total, page, limit, totalPages }`. `items` contiene objetos `{ id, ticker, name, type }` ordenados por ticker e ID. `total` cuenta todas las coincidencias y `totalPages` indica la cantidad de páginas. Incluye acciones y monedas: ARS puede encontrarse por ticker (`ars`) o nombre (`pesos`). Si no hay coincidencias, devuelve `items: []`, `total: 0` y `totalPages: 0`. Una página posterior a la última devuelve `items: []` y conserva los totales. Una búsqueda ausente, vacía o inválida, o parámetros de paginación inválidos, devuelve HTTP 400.
 
-```sh
-docker compose up -d db --wait
-npm run test:instruments
-```
+### Consultar portfolio
 
-## Estructura y decisiones
-
-La aplicación usa arquitectura hexagonal organizada por funcionalidad. El dominio y los casos de uso no importan NestJS, Prisma ni componentes de infraestructura.
-
-```text
-src/instruments/
-  domain/instrument.ts                         Modelo independiente de Prisma
-  application/search-instruments.use-case.ts   Caso de uso y validación
-  application/ports/instrument.repository.ts   Puerto de salida
-  infrastructure/http/                        Adaptador de entrada HTTP
-  infrastructure/persistence/                 Adaptador de salida Prisma
-  instruments.module.ts                       Composición e inyección de dependencias
-
-src/snapshot/
-  domain/account-snapshot.ts                   Modelos y funciones puras de transición de estado
-  application/ports/account-snapshot.repository.ts Puerto de salida del repositorio
-  infrastructure/persistence/                  Adaptador Prisma y mapper de órdenes
-  snapshot.module.ts                           Composición e inyección de dependencias
-```
-
-El controlador invoca el caso de uso y convierte errores de entrada en HTTP 400. El caso de uso depende del contrato `InstrumentRepository`; el módulo NestJS lo conecta con `PrismaInstrumentRepository` mediante una fábrica. El adaptador Prisma implementa la búsqueda y el escape de patrones SQL, devolviendo modelos propios. La misma operación puede invocarse desde otro adaptador sin depender de HTTP.
-
-`npm run test:unit` prueba los casos de uso y cálculos sin iniciar NestJS ni PostgreSQL. `npm run test:instruments` ejecuta las pruebas de búsqueda; `npm test` ejecuta toda la suite, incluyendo las funcionales con la base del challenge.
-
-La separación de pruebas por responsabilidad, los escenarios de integración y los comandos de ejecución se detallan en [`test/README.md`](test/README.md).
-
-- `src/shared/infrastructure/database`: proveedor Prisma compartido, con conexión al iniciar y desconexión al cerrar.
-- `src/shared/infrastructure/http/health.controller.ts`: consulta `SELECT 1` mediante Prisma; responde 503 si la base no está disponible. Es una comprobación de infraestructura, sin lógica de negocio.
-- `prisma/schema.prisma`: mapeo de las tablas originales y de `account_snapshots`, el estado derivado de cada cuenta.
-- `prisma.config.ts`: configuración de conexión para la CLI de Prisma.
-- `docker/postgres/database.sql`: datos del challenge, con IDs BIGINT y ajustes de esquema del proyecto.
-
-PostgreSQL convierte los identificadores sin comillas a minúsculas. Los modelos usan `@map` para exponer campos como `userId` sin renombrar columnas. La cotización usa `date`, tal como aparece en el SQL.
-
-Prisma 7 utiliza el adaptador PostgreSQL y genera el cliente en `src/generated/prisma`, excluido de Git y generado durante el build. Referencia: [configuración de Prisma 7](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7).
-
-### Gestión del esquema y base de datos preexistente
-
-El diseño toma la base proporcionada como punto de partida y adopta un supuesto conservador: pertenece a un ecosistema externo y la aplicación no es responsable de administrar su esquema ni tiene autoridad para modificarlo automáticamente. Por eso se respetan los nombres y convenciones existentes mediante los mapeos de Prisma, y no se utiliza **Prisma Migrate** para gestionar su evolución. Este supuesto se refiere a la administración del esquema, no a las lecturas y escrituras de negocio que realiza la API.
-
-La entrega incluye ajustes de esquema necesarios para la solución, documentados en `docker/postgres/database.sql` y reflejados en `prisma/schema.prisma`; no implica que la base original permanezca intacta. En un entorno administrado externamente, esos ajustes deberían coordinarse y aplicarse por el responsable de la base antes de desplegar la aplicación. Para reproducir el challenge localmente, el SQL inicializa el esquema únicamente sobre un volumen vacío; la aplicación no aplica esos cambios al arrancar.
-
-Si la aplicación fuera propietaria del esquema y responsable de su evolución, se habría utilizado **Prisma Migrate** para versionar los cambios y aplicarlos de forma controlada durante el despliegue.
-
-El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
-
-La prueba funcional de envío de órdenes está en `test/e2e/orders.e2e.test.mjs` y usa una base de pruebas aislada.
-
-## Portfolio
-
-También se puede consultar mediante `GET /accounts/:accountNumber/portfolio`, por ejemplo `/accounts/10001/portfolio`. Devuelve el mismo contrato que la búsqueda por usuario, incluido el `userId` resuelto. `findByAccountNumber` usa igualdad exacta y mantiene los ceros iniciales; solo quita espacios al inicio y al final. Acepta de 1 a 20 caracteres, acorde con la columna original.
+`GET /users/:userId/portfolio` permite consultar por usuario. También se puede consultar mediante `GET /accounts/:accountNumber/portfolio`, por ejemplo `/accounts/10001/portfolio`. Devuelve el mismo contrato que la búsqueda por usuario, incluido el `userId` resuelto. `findByAccountNumber` usa igualdad exacta y mantiene los ceros iniciales; solo quita espacios al inicio y al final. Acepta de 1 a 20 caracteres, acorde con la columna original.
 
 La resolución del portfolio por número de cuenta busca el usuario correspondiente sin bloqueos. Una cuenta inexistente devuelve 404, una entrada inválida 400 y números de cuenta duplicados 409. El SQL original no garantiza unicidad: se detecta la ambigüedad sin elegir arbitrariamente un usuario ni modificar el esquema.
 
 ```sh
-curl 'http://localhost:3001/users/1/portfolio'
-npm run test:portfolio
-npm test
+curl 'http://localhost:3000/users/1/portfolio'
+curl 'http://localhost:3000/accounts/10001/portfolio'
 ```
 
 El puerto debe coincidir con `API_PORT`. La respuesta incluye `totalValue`, `cashBalance`, `reservedCash`, `availableCash` y `positions`. Los importes y porcentajes se serializan como strings decimales con dos decimales; las cantidades de acciones son enteros. Las cantidades de la posición ARS son strings decimales en pesos, para conservar centavos. El cálculo usa decimal.js con precisión de 40 dígitos y redondea al responder.
@@ -188,8 +153,7 @@ La funcionalidad sigue la misma arquitectura hexagonal: cálculo en `portfolio/d
 
 La lista `positions` incluye ARS con `type: MONEDA` cuando hay saldo de efectivo o reservas. Usa el identificador real del instrumento, `price: "1.00"`, `marketValue = cashBalance`, `quantity = cashBalance`, `reservedQuantity = reservedCash` y `availableQuantity = availableCash`. Sus rendimientos y `priceDate` son `null`: no requiere cotización. Las posiciones de acciones llevan `type: ACCIONES`. Un portfolio sin efectivo, reservas ni acciones sigue devolviendo `positions: []`.
 
-
-## Enviar órdenes
+### Enviar órdenes — `POST /users/:userId/orders`
 
 `POST /users/:userId/orders` acepta:
 
@@ -219,25 +183,7 @@ El caso de uso depende de un puerto transaccional. Prisma bloquea la fila del us
 
 `requests.http` contiene ejemplos para REST Client. Sus POST modifican la cuenta indicada.
 
-## Pruebas de órdenes y suite completa
-
-```sh
-npm run test:db:up
-npm test
-# Solo órdenes:
-npm run test:orders
-npm run lint
-npm run test:db:down
-```
-
-`compose.test.yaml` levanta PostgreSQL en localhost:55432, con la base `cocos_test` inicializada desde el SQL del challenge y almacenamiento temporal. `npm test` y `test:orders` cargan `.env.test.example` y permiten overrides desde `.env.test`. Las variables ya exportadas en la terminal tienen prioridad.
-
-Las pruebas de escritura exigen que el nombre de base termine en `_test`, crean usuarios propios y eliminan únicamente sus fixtures al finalizar. No operan sobre el usuario 1 del seed. Al detener y recrear el contenedor de pruebas se reinicializa su almacenamiento temporal. `test:instruments` consulta la configuración local; `test:portfolio` también puede inicializar snapshots faltantes, sin cambiar órdenes del seed.
-
-La cobertura incluye persistencia y cambio del portfolio, redondeo por monto, reservas, rechazos de compras/ventas, entradas inválidas, cotizaciones ausentes y competencia entre solicitudes simultáneas de compra, reserva y venta.
-
-
-### Transferencias en el endpoint de órdenes
+#### Transferencias en el endpoint de órdenes
 
 El mismo `POST /users/:userId/orders` acepta ingresos y egresos:
 
@@ -257,14 +203,61 @@ Las transferencias requieren MARKET, no aceptan un precio enviado por el cliente
 
 CASH_IN se guarda FILLED. CASH_OUT se guarda FILLED si el saldo disponible (descontando reservas LIMIT) alcanza; en caso contrario se guarda REJECTED y no altera el saldo. Ambos usan la misma transacción y bloqueo por usuario que las compras y ventas. No requieren cotización de ARS y se reflejan inmediatamente en el saldo y la posición ARS del portfolio.
 
-Estas transferencias son movimientos simulados del challenge; no ejecutan operaciones contra bancos externos.
+#### Idempotencia y reintentos
 
+Para garantizar la consistencia de la base de datos y evitar el procesamiento de órdenes duplicadas ante reintentos de red:
 
-### Cancelación
+- **Validación de `transactionId`:** Cada solicitud de orden valida un identificador único (`transactionId`). Un identificador nuevo crea la orden con HTTP 201. Si se repite con el mismo usuario y solicitud equivalente, devuelve la orden existente con HTTP 200 y su estado actual, sin recalcular precios, modificar el snapshot ni ejecutar nuevamente. Una solicitud o usuario diferente recibe HTTP 409.
+- **Compatibilidad con datos iniciales:** La columna permite valores `NULL` exclusivamente para preservar la compatibilidad con el dataset provisto inicialmente en el challenge.
+- **Comparación de solicitudes:** `orders.originalrequest` guarda una representación normalizada de instrumento, side, type, size, amount y price. Los importes equivalentes (`10` y `"10.00"`) coinciden; cambiar de size a amount se considera otra solicitud. El precio de ejecución MARKET no participa de la comparación. Órdenes anteriores sin esta información devuelven 409; no se infiere la intención original a partir del resultado.
+- **Esquema existente:** El SQL inicial incluye `originalRequest TEXT`. Para una base ya creada, ejecutar `ALTER TABLE orders ADD COLUMN IF NOT EXISTS originalrequest TEXT;` antes de arrancar la nueva versión.
+- **Identificador obligatorio:** El cliente debe proporcionar `transactionId`; si falta, la API devuelve 400. El índice único global se conserva para proteger también las solicitudes simultáneas.
+
+### Cancelar órdenes — `POST /users/:userId/orders/:orderId/cancel`
 
 `POST /users/:userId/orders/:orderId/cancel` cambia una orden NEW del usuario a CANCELLED y devuelve HTTP 200 con `{ id, userId, status }`. La fila se conserva, con su cantidad, precio y fecha originales. Las reservas se liberan al dejar de contabilizar la orden como NEW; no se altera la tenencia FILLED ni el saldo contable.
 
 Cancelar FILLED, REJECTED o CANCELLED devuelve 409. Orden inexistente o perteneciente a otro usuario devuelve 404; identificadores inválidos devuelven 400. La validación y actualización ocurren dentro del bloqueo transaccional por usuario, y el UPDATE comprueba nuevamente que el estado sea NEW. Dos cancelaciones simultáneas producen una única cancelación exitosa.
+
+## Documentación Swagger / OpenAPI
+
+La API cuenta con documentación interactiva generada con Swagger (OpenAPI 3.0):
+
+- **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs) (o el puerto configurado en `API_PORT` / `PORT`)
+- **Especificación OpenAPI (JSON):** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
+
+Desde la interfaz web de Swagger es posible consultar y probar los endpoints de:
+
+- **Instruments:** Búsqueda paginada de activos por ticker o nombre (`GET /instruments`).
+- **Portfolio:** Consulta de portfolio por usuario (`GET /users/:userId/portfolio`) o por número de cuenta (`GET /accounts/:accountNumber/portfolio`).
+- **Orders:** Envío de órdenes MARKET y LIMIT, transferencias CASH_IN y CASH_OUT (`POST /users/:userId/orders`) y cancelación de órdenes en estado NEW (`POST /users/:userId/orders/:orderId/cancel`).
+
+## Pruebas
+
+```sh
+npm run test:unit
+npm run test:db:up
+npm test
+# Solo órdenes:
+npm run test:orders
+npm run lint
+npm run test:db:down
+```
+
+`compose.test.yaml` levanta PostgreSQL en localhost:55432, con la base `cocos_test` inicializada desde el SQL del challenge y almacenamiento temporal. `npm test` y `test:orders` cargan `.env.test.example` y permiten overrides desde `.env.test`. Las variables ya exportadas en la terminal tienen prioridad.
+
+Las pruebas de escritura exigen que el nombre de base termine en `_test`, crean usuarios propios y eliminan únicamente sus fixtures al finalizar. No operan sobre el usuario 1 del seed. Al detener y recrear el contenedor de pruebas se reinicializa su almacenamiento temporal. `test:instruments` consulta la configuración local; `test:portfolio` también puede inicializar snapshots faltantes, sin cambiar órdenes del seed.
+
+La cobertura incluye persistencia y cambio del portfolio, redondeo por monto, reservas, rechazos de compras/ventas, entradas inválidas, cotizaciones ausentes y competencia entre solicitudes simultáneas de compra, reserva y venta.
+
+La separación de pruebas por responsabilidad, los escenarios de integración y los comandos de ejecución se detallan en [`test/README.md`](test/README.md).
+
+Para las suites individuales de lectura:
+
+```sh
+npm run test:instruments
+npm run test:portfolio
+```
 
 ### Verificación de consideraciones funcionales
 
@@ -289,21 +282,63 @@ Cancelar FILLED, REJECTED o CANCELLED devuelve 409. Orden inexistente o pertenec
 
 Las pruebas funcionales usan PostgreSQL aislado y verifican persistencia, portfolio, precios, redondeo, transferencias, reservas, cancelaciones y concurrencia. Los supuestos restantes están documentados: rendimiento total de la posición abierta sobre costo promedio, reservas de LIMIT, transferencias en pesos enteros por size INT y el historial inconsistente de BMA provisto en el seed.
 
+## Estructura y decisiones
 
-## Documentación Swagger / OpenAPI
+La aplicación usa arquitectura hexagonal organizada por funcionalidad. El dominio y los casos de uso no importan NestJS, Prisma ni componentes de infraestructura.
 
-La API cuenta con documentación interactiva generada con Swagger (OpenAPI 3.0):
+```text
+src/instruments/
+  domain/instrument.ts                         Modelo independiente de Prisma
+  application/search-instruments.use-case.ts   Caso de uso y validación
+  application/ports/instrument.repository.ts   Puerto de salida
+  infrastructure/http/                        Adaptador de entrada HTTP
+  infrastructure/persistence/                 Adaptador de salida Prisma
+  instruments.module.ts                       Composición e inyección de dependencias
 
-- **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs) (o el puerto configurado en `API_PORT` / `PORT`)
-- **Especificación OpenAPI (JSON):** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
+src/snapshot/
+  domain/account-snapshot.ts                   Modelos y funciones puras de transición de estado
+  application/ports/account-snapshot.repository.ts Puerto de salida del repositorio
+  infrastructure/persistence/                  Adaptador Prisma y mapper de órdenes
+  snapshot.module.ts                           Composición e inyección de dependencias
+```
 
-Desde la interfaz web de Swagger es posible consultar y probar los endpoints de:
-- **Instruments:** Búsqueda de activos por ticker o nombre (`GET /instruments`).
-- **Portfolio:** Consulta de portfolio por usuario (`GET /users/:userId/portfolio`) o por número de cuenta (`GET /accounts/:accountNumber/portfolio`).
-- **Orders:** Envío de órdenes MARKET y LIMIT, transferencias CASH_IN y CASH_OUT (`POST /users/:userId/orders`) y cancelación de órdenes en estado NEW (`POST /users/:userId/orders/:orderId/cancel`).
+El controlador invoca el caso de uso y convierte errores de entrada en HTTP 400. El caso de uso depende del contrato `InstrumentRepository`; el módulo NestJS lo conecta con `PrismaInstrumentRepository` mediante una fábrica. El adaptador Prisma implementa la búsqueda y el escape de patrones SQL, devolviendo modelos propios. La misma operación puede invocarse desde otro adaptador sin depender de HTTP.
 
+- `src/shared/infrastructure/database`: proveedor Prisma compartido, con conexión al iniciar y desconexión al cerrar.
+- `src/shared/infrastructure/http/health.controller.ts`: consulta `SELECT 1` mediante Prisma; responde 503 si la base no está disponible. Es una comprobación de infraestructura, sin lógica de negocio.
+- `prisma/schema.prisma`: mapeo de las tablas originales y de `account_snapshots`, el estado derivado de cada cuenta.
+- `prisma.config.ts`: configuración de conexión para la CLI de Prisma.
+- `docker/postgres/database.sql`: datos del challenge, con IDs BIGINT y ajustes de esquema del proyecto.
 
-## Registro de Órdenes y Snapshot de Cuenta
+PostgreSQL convierte los identificadores sin comillas a minúsculas. Los modelos usan `@map` para exponer campos como `userId` sin renombrar columnas. La cotización usa `date`, tal como aparece en el SQL.
+
+Prisma 7 utiliza el adaptador PostgreSQL y genera el cliente en `src/generated/prisma`, excluido de Git y generado durante el build. Referencia: [configuración de Prisma 7](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7).
+
+### Gestión del esquema: alternativa con Prisma Migrate
+
+Se asume que la base pertenece a un sistema externo: la aplicación opera sobre ella, pero no administra su esquema. Los ajustes del challenge están en `docker/postgres/database.sql` y requieren coordinación con su responsable. El SQL local solo se ejecuta sobre un volumen vacío.
+
+Si la aplicación administrara el esquema, usaríamos **Prisma Migrate**. Ejemplo para una base existente, con `schema.prisma` previamente alineado con ella:
+
+```sh
+# Registrar el esquema existente como punto de partida (sin recrear tablas)
+mkdir -p prisma/migrations/0_init
+npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script --output prisma/migrations/0_init/migration.sql
+npx prisma migrate resolve --applied 0_init
+
+# En desarrollo, después de agregar el modelo de auditoría a schema.prisma
+npx prisma migrate dev --name add_audit_log
+npx prisma generate
+
+# En el despliegue, aplicar las migraciones versionadas en Git
+npx prisma migrate deploy
+```
+
+Este flujo es una alternativa futura; el proyecto actual no ejecuta migraciones al arrancar.
+
+El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
+
+### Registro de Órdenes y Snapshot de Cuenta
 
 Para evitar recorrer y recalcular el historial de órdenes del usuario en cada consulta de portfolio o validación de recursos, una vez inicializado el snapshot:
 
@@ -314,18 +349,6 @@ Para evitar recorrer y recalcular el historial de órdenes del usuario en cada c
 - **Costo de las operaciones habituales:** El snapshot evita reproducir el historial de órdenes en cada consulta o validación. El trabajo sigue dependiendo de las posiciones y cotizaciones involucradas: se recorren y ordenan posiciones, y sus datos se leen y persisten como JSON.
 - **Reconstrucción:** Si falta el snapshot, se inicializa automáticamente bajo bloqueo seguro desde las órdenes del usuario. Ante modificaciones manuales o mantenimiento, el estado actual puede regenerarse mediante `npm run snapshots:rebuild`, que vuelve a procesar el historial. Esto no permite reconstruir las reservas a una fecha pasada, porque no se conservan todas las transiciones de estado.
 
-
-## Deduplicación e Idempotencia de Órdenes
-
-Para garantizar la consistencia de la base de datos y evitar el procesamiento de órdenes duplicadas ante reintentos de red:
-
-- **Validación de `transactionId`:** Cada solicitud de orden valida un identificador único (`transactionId`). Un identificador nuevo crea la orden con HTTP 201. Si se repite con el mismo usuario y solicitud equivalente, devuelve la orden existente con HTTP 200 y su estado actual, sin recalcular precios, modificar el snapshot ni ejecutar nuevamente. Una solicitud o usuario diferente recibe HTTP 409.
-- **Compatibilidad con datos iniciales:** La columna permite valores `NULL` exclusivamente para preservar la compatibilidad con el dataset provisto inicialmente en el challenge.
-- **Comparación de solicitudes:** `orders.originalrequest` guarda una representación normalizada de instrumento, side, type, size, amount y price. Los importes equivalentes (`10` y `"10.00"`) coinciden; cambiar de size a amount se considera otra solicitud. El precio de ejecución MARKET no participa de la comparación. Órdenes anteriores sin esta información devuelven 409; no se infiere la intención original a partir del resultado.
-- **Esquema existente:** El SQL inicial incluye `originalRequest TEXT`. Para una base ya creada, ejecutar `ALTER TABLE orders ADD COLUMN IF NOT EXISTS originalrequest TEXT;` antes de arrancar la nueva versión.
-- **Identificador obligatorio:** El cliente debe proporcionar `transactionId`; si falta, la API devuelve 400. El índice único global se conserva para proteger también las solicitudes simultáneas.
-
-
 ## Consideraciones para Entornos Productivos
 
 Para la evolución de esta solución hacia un entorno de producción de alta escala y criticidad financiera, se destacan las siguientes sugerencias arquitectónicas:
@@ -334,26 +357,28 @@ Para la evolución de esta solución hacia un entorno de producción de alta esc
 
 En un entorno productivo se sugiere implementar un agente de seguimiento de métricas y rendimiento de aplicaciones (APM), como **Datadog** o **New Relic** (o soluciones basadas en **OpenTelemetry**), para supervisar en tiempo real latencias (p95/p99), throughput, tasas de error, saturación del connection pool de la base de datos y trazabilidad distribuida de transacciones.
 
-### 2. Sugerencia de Desacople en Microservicios y Patrón Saga
+### 2. Responsabilidades en Microservicios y Patrón Saga
 
-Como sugerencia de evolución arquitectónica, para escenarios de alta concurrencia y crecimiento de equipos, el proyecto podría desacoplarse en **microservicios** especializados según sus contextos delimitados (por ejemplo, servicios independientes para *Orders*, *Portfolio/Ledger*, *Market Data* y *Accounts*).
+En un entorno productivo orientado a **microservicios**, las responsabilidades podrían separarse en servicios de *Orders*, *Portfolio/Ledger*, *Market Data* y *Accounts*, cada uno responsable de sus datos.
 
-En un esquema distribuido con bases de datos independientes por servicio, para coordinar los flujos transaccionales y mantener la consistencia de los datos de forma organizada y mantenible, se debería implementar el **Patrón Saga** (adoptando cualquiera de sus dos modalidades: **orquestación** con un coordinador o **coreografía** orientada a eventos con un message broker).
+Cuando una operación afecta bases de datos de varios servicios, se necesita coordinar sus cambios y manejar fallas parciales. Una opción es el **patrón Saga**, mediante orquestación o coreografía: cada servicio ejecuta una transacción local ACID y, si el flujo falla, se aplican acciones compensatorias. Saga permite alcanzar consistencia eventual; no garantiza una transacción ACID global. Los invariantes que requieran consistencia inmediata deberían mantenerse dentro de una misma frontera transaccional.
 
 ### 3. Mantenimiento y Auditoría de Dependencias
 
-- **Resolución de avisos de `npm audit`:** Resolver las advertencias de dependencias transitivas asociadas a la CLI de Prisma cuando se publiquen parches compatibles upstream, evitando aplicar *downgrades* mayores forzados.
+Se corrigen las vulnerabilidades transitivas con overrides, manteniendo Nest 11 y Prisma 7:
+
+| Dependencia | Versión fijada |
+| --- | --- |
+| `@nestjs/platform-express → multer` | `2.3.0` |
+| `@prisma/config → deepmerge-ts` | `8.0.2` |
+| `prisma → mysql2` | `3.24.4` |
+
+`deepmerge-ts` cambia de versión mayor; se verificaron la configuración de Prisma, el build y los tests. Revisar estos overrides al actualizar Nest o Prisma y repetir `npm audit` y `npm test`.
 
 ### 4. Auditoría de Operaciones
 
-Actualmente se conserva el estado de las órdenes, pero no un historial completo de sus transiciones. Para un entorno productivo, se propone incorporar un registro de auditoría **append-only** (sin modificar ni eliminar registros previos) de los eventos relevantes de negocio, como la creación, ejecución, rechazo y cancelación de órdenes y los movimientos de fondos. Cada registro incluiría la operación, el actor, la fecha, el identificador de correlación y los estados anterior y nuevo, cuando corresponda. Este historial complementaría los logs técnicos de la aplicación.
-
-La persistencia del registro de auditoría debería ser atómica con la operación de negocio. Inicialmente podría almacenarse en una tabla de PostgreSQL, sin requerir una base separada. Si se publica a un sistema externo, podría utilizarse el patrón **transactional outbox**, guardando el evento en la misma transacción y publicándolo posteriormente con reintentos y deduplicación.
+Incorporar un historial **append-only** de órdenes y movimientos de fondos, con actor, fecha, correlación y estados anterior/nuevo. Guardarlo en PostgreSQL dentro de la misma transacción que la operación. Actualmente solo se conserva el estado de las órdenes, no todas sus transiciones.
 
 ### 5. Normalización de Posiciones del Snapshot
 
-Actualmente `account_snapshots` almacena las posiciones de cada usuario en un campo JSON. Esta representación simplifica la persistencia para el alcance del challenge, aunque la implementación lee el conjunto de posiciones y vuelve a guardar el JSON completo cuando cambia una posición.
-
-Si aumenta la cantidad de posiciones por cuenta o se necesitan consultas individuales, se podría migrar a una tabla `account_snapshot_positions`, con una fila por usuario e instrumento y una clave única sobre `(user_id, instrument_id)`. Cada fila almacenaría cantidad, cantidad reservada, costo acumulado e indicador de historial inconsistente. Esto permitiría consultar y actualizar la posición afectada sin reescribir las demás, además de incorporar claves foráneas y restricciones sobre los datos.
-
-Los saldos y reservas de efectivo permanecerían en `account_snapshots`. La actualización de la orden, el efectivo y las posiciones debería conservarse en una misma transacción; esta normalización no elimina por sí sola la necesidad de coordinar las operaciones concurrentes sobre los recursos del usuario. Las posiciones seguirían siendo estado derivado del registro de órdenes.
+Si crecen las posiciones por cuenta, reemplazar el JSON por `account_snapshot_positions`, con una fila por `(user_id, instrument_id)`, cantidad, reservas, costo e indicador de inconsistencia. Permitiría actualizar una posición sin reescribir las demás y agregar restricciones de integridad. Efectivo, posiciones y órdenes deben seguir actualizándose en la misma transacción, conservando la coordinación por usuario.

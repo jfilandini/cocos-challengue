@@ -3,14 +3,14 @@ import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', 'dist/**', 'src/generated/**', 'coverage/**'] },
+  { ignores: ['node_modules/**', 'dist/**', '.test-dist/**', 'src/generated/**', 'coverage/**'] },
   {
     files: ['**/*.mjs'],
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['src/**/*.ts', 'prisma.config.ts'],
+    files: ['src/**/*.ts', 'test/**/*.ts', 'prisma.config.ts'],
     extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: globals.node,
@@ -24,6 +24,10 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
     },
+  },
+  {
+    files: ['test/**/*.ts'],
+    rules: { '@typescript-eslint/require-await': 'off' },
   },
   {
     files: ['src/**/domain/**/*.ts', 'src/**/application/**/*.ts'],
