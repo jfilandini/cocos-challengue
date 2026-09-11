@@ -1,6 +1,7 @@
 @baseUrl = http://localhost:3001
 @userId = 1
 # Reutilizar transactionId solo para reintentar la misma orden. Cambiarlo para una operación nueva.
+# Primera solicitud: 201. Reintento equivalente: 200 con la orden existente. Otro payload o usuario: 409.
 
 ### Búsqueda paginada de activos
 GET {{baseUrl}}/instruments?query=molin&page=1&limit=2

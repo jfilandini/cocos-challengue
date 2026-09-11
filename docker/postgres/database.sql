@@ -7,7 +7,7 @@ CREATE TABLE users (
 
 CREATE TABLE account_snapshots (
   userId BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  cash NUMERIC(38, 2) NOT NULL,
+  settledCash NUMERIC(38, 2) NOT NULL,
   reservedCash NUMERIC(38, 2) NOT NULL,
   positions JSONB NOT NULL,
   updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -21,6 +21,7 @@ CREATE TABLE instruments (
 );
 
 CREATE TABLE orders (
+  originalRequest TEXT,
   transactionId VARCHAR(100),
   CONSTRAINT uq_orders_transaction UNIQUE (transactionId),
   id BIGSERIAL PRIMARY KEY,

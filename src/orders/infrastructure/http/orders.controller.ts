@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Param, Post, Res } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SubmitOrderUseCase } from '../../application/submit-order.use-case';
 import { CancelOrderUseCase } from '../../application/cancel-order.use-case';
@@ -95,8 +95,10 @@ export class OrdersController {
     description: 'Precio de mercado no disponible para calcular o ejecutar la orden MARKET',
     type: ErrorResponseDto,
   })
-  async submit(@Param('userId') userId: string, @Body() body: unknown) {
-    const order = await this.submitOrder.execute(userId, body);
+  @ApiResponse({ status: 200, description: 'Reintento equivalente: devuelve la orden existente con su estado actual', type: OrderResponseDto })
+  async submit(@Param('userId') userId: string, @Body() body: unknown, @Res({ passthrough: true }) response: { status(code: number): unknown }) {
+    const { order, created } = await this.submitOrder.execute(userId, body);
+    response.status(created ? 201 : 200);
     return { ...order, id: order.id.toString(), userId: order.userId.toString(), instrumentId: order.instrumentId.toString() };
   }
 }

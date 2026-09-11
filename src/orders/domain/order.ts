@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import { OrderSide } from '../../shared/domain/order-side';
 import { OrderStatus } from '../../shared/domain/order-status';
 import { OrderType } from '../../shared/domain/order-type';
-import type { AccountSnapshot } from '../../shared/domain/account-snapshot';
+import type { AccountSnapshot } from '../../snapshot/domain/account-snapshot';
 
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 const CASH_PRICE = '1.00';
@@ -75,7 +75,7 @@ function generateCashOutOrderDraft(
   const quantity = new Amount(request.size ?? request.amount!);
   if (!quantity.gt(0)) throw new InvalidOrderError('Calculated size must be greater than 0');
   const size = quantity.toNumber();
-  const availableCash = new Amount(snapshot.cash).minus(snapshot.reservedCash);
+  const availableCash = new Amount(snapshot.settledCash).minus(snapshot.reservedCash);
   const sufficient = availableCash.gte(size);
 
   return {
@@ -104,7 +104,7 @@ function generateInstrumentTradeOrderDraft(
   if (!quantity.gt(0)) throw new InvalidOrderError('Calculated size must be greater than 0');
   const size = quantity.toNumber();
 
-  const availableCash = new Amount(snapshot.cash).minus(snapshot.reservedCash);
+  const availableCash = new Amount(snapshot.settledCash).minus(snapshot.reservedCash);
   const position = snapshot.positions.find(p => p.instrumentId === request.instrumentId.toString());
   const availableShares = (position?.quantity ?? 0) - (position?.reservedQuantity ?? 0);
 

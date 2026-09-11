@@ -1,4 +1,5 @@
-import { validateIdInput } from '../../shared/domain/database-validator-helper';
+import { serializeOrderRequest } from './order-idempotency';
+import { validateId } from '../../shared/domain/id-validator-helper';
 import { InstrumentType } from '../../shared/domain/instrument-type';
 import { Currency } from '../../shared/domain/currency';
 import { isCashTransfer, isInstrumentOrder } from '../../shared/domain/order-side';
@@ -13,14 +14,19 @@ export class SubmitOrderUseCase {
   
 
   async execute(userIdInput: unknown, body: unknown) {
-    const userId = validateIdInput(userIdInput);
+    const userId = validateId(userIdInput);
     const request = validateOrder(body);
-    const instrumentWithLatestClose = await this.instruments.findInstrumentById(request.instrumentId);
-    if (!instrumentWithLatestClose) throw new OrderResourceNotFoundError('Instrument not found');
+    const originalRequest = serializeOrderRequest(request);
     return this.orders.withUserLock(userId, async transaction => {
-      if (await transaction.existsByTransactionId(request.transactionId)) {
-        throw new OrderIdempotencyConflictError('transactionId already exists');
+      const existing = await transaction.findByTransactionId(request.transactionId);
+      if (existing) {
+        if (existing.order.userId !== userId || existing.originalRequest !== originalRequest) {
+          throw new OrderIdempotencyConflictError('transactionId already exists with a different user or request');
+        }
+        return { order: existing.order, created: false };
       }
+      const instrumentWithLatestClose = await this.instruments.findInstrumentById(request.instrumentId);
+      if (!instrumentWithLatestClose) throw new OrderResourceNotFoundError('Instrument not found');
 
       if (isCashTransfer(request.side)) {
         if (instrumentWithLatestClose.type !== InstrumentType.MONEDA || instrumentWithLatestClose.ticker !== Currency.ARS) {
@@ -32,7 +38,7 @@ export class SubmitOrderUseCase {
       const snapshot = await transaction.readSnapshot() ?? await transaction.initializeSnapshot();
       const draft = generateOrderDraft(userId, request, instrumentWithLatestClose.close, snapshot);
       validateOrderSize(draft.size);
-      return transaction.save(draft, request.transactionId);
+      return { order: await transaction.save(draft, request.transactionId, originalRequest), created: true };
     });
   }
 }

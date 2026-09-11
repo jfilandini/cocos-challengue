@@ -1,4 +1,4 @@
-import { InvalidDatabaseIdError } from '../../domain/database-validator-helper';
+import { InvalidIdError } from '../../domain/id-validator-helper';
 import {
   ArgumentsHost,
   BadRequestException,
@@ -50,7 +50,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
     }
 
     if (
-      exception instanceof InvalidDatabaseIdError ||
+      exception instanceof InvalidIdError ||
       exception instanceof InvalidOrderError ||
       exception instanceof InvalidInstrumentSearchError ||
       exception instanceof InvalidPortfolioUserError ||

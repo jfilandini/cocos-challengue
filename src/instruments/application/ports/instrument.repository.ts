@@ -13,5 +13,5 @@ export interface InstrumentSearchResult {
 
 export interface InstrumentRepository {
   search(query: string, pagination: InstrumentSearchPagination): Promise<InstrumentSearchResult>;
-  findInstrumentById(id: bigint): Promise<{ ticker: string | null; type: InstrumentType | null; close: string | null } | null>;
+  findInstrumentById(id: bigint): Promise<{ ticker: string; type: InstrumentType | null; close: string | null } | null>;
 }

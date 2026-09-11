@@ -27,12 +27,12 @@ export class SearchInstrumentsUseCase {
   constructor(private readonly instruments: InstrumentRepository) {}
 
   execute(query: unknown, page?: unknown, limit?: unknown): Promise<InstrumentSearchPage> {
-    const parsed = searchSchema.safeParse({ query, page, limit });
-    if (!parsed.success) {
-      throw new InvalidInstrumentSearchError(parsed.error.issues.map(issue =>
+    const validated = searchSchema.safeParse({ query, page, limit });
+    if (!validated.success) {
+      throw new InvalidInstrumentSearchError(validated.error.issues.map(issue =>
         `${issue.path.join('.')}: ${issue.message}`).join('; '));
     }
-    const input = parsed.data;
+    const input = validated.data;
     return this.instruments.search(input.query, { page: input.page, limit: input.limit })
       .then(result => ({
         ...result,
