@@ -1,34 +1,23 @@
 
 CREATE TABLE users (
-  id BIGSERIAL PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   email VARCHAR(255),
   accountNumber VARCHAR(20)
 );
 
-CREATE TABLE account_snapshots (
-  userId BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  settledCash NUMERIC(38, 2) NOT NULL,
-  reservedCash NUMERIC(38, 2) NOT NULL,
-  positions JSONB NOT NULL,
-  updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE instruments (
-  id BIGSERIAL PRIMARY KEY,
+  id SERIAL PRIMARY KEY,
   ticker VARCHAR(10),
   name VARCHAR(255),
   type VARCHAR(10)
 );
 
 CREATE TABLE orders (
-  originalRequest TEXT,
-  transactionId VARCHAR(100),
-  CONSTRAINT uq_orders_transaction UNIQUE (transactionId),
-  id BIGSERIAL PRIMARY KEY,
-  instrumentId BIGINT,
-  userId BIGINT,
+  id SERIAL PRIMARY KEY,
+  instrumentId INT,
+  userId INT,
   size INT,
-  price NUMERIC(18, 2),
+  price NUMERIC(10, 2),
   type VARCHAR(10),
   side VARCHAR(10),
   status VARCHAR(20),
@@ -38,26 +27,18 @@ CREATE TABLE orders (
 );
 
 CREATE TABLE marketdata (
-  id BIGSERIAL PRIMARY KEY,
-  instrumentId BIGINT,
-  high NUMERIC(18, 2),
-  low NUMERIC(18, 2),
-  open NUMERIC(18, 2),
-  close NUMERIC(18, 2),
-  previousClose NUMERIC(18, 2),
+  id SERIAL PRIMARY KEY,
+  instrumentId INT,
+  high NUMERIC(10, 2),
+  low NUMERIC(10, 2),
+  open NUMERIC(10, 2),
+  close NUMERIC(10, 2),
+  previousClose NUMERIC(10, 2),
   date DATE,
   FOREIGN KEY (instrumentId) REFERENCES instruments(id)
 );
 
-
-CREATE INDEX idx_users_accountnumber ON users(accountnumber);
-CREATE INDEX idx_instruments_ticker ON instruments(ticker);
-CREATE INDEX idx_orders_user_status_datetime ON orders(userid, status, datetime, id);
-CREATE INDEX idx_orders_instrumentid ON orders(instrumentid);
-CREATE INDEX idx_marketdata_instrument_date ON marketdata(instrumentid, date DESC, id DESC);
-
 INSERT INTO users (email,accountNumber) VALUES
-
    ('emiliano@test.com','10001'),
    ('jose@test.com','10002'),
    ('francisco@test.com','10003'),

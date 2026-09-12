@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', 'dist/**', 'src/generated/**', 'coverage/**'] },
+  { ignores: ['node_modules/**', 'dist/**', '.test-dist/**', 'src/generated/**', 'coverage/**'] },
   {
     files: ['**/*.mjs'],
     extends: [js.configs.recommended],

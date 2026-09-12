@@ -9,6 +9,9 @@ Requisitos: Docker Desktop encendido (o Docker Engine con Compose).
 
 ```sh
 cp .env.example .env
+docker compose up -d --wait db
+# Solo la primera vez, sobre la base original sin migraciones:
+docker compose run --build --rm api npm run db:baseline
 docker compose up --build -d --wait
 curl http://localhost:3000/health
 ```
@@ -28,7 +31,7 @@ docker compose ps
 docker compose down
 ```
 
-`down` conserva los datos. El SQL de `docker/postgres/database.sql` se carga **solo cuando el volumen está vacío**. Modificarlo o reiniciar los servicios no vuelve a cargarlo. `docker compose down -v` elimina los datos locales y permite una inicialización desde cero al levantar nuevamente.
+`down` conserva los datos. Docker ejecuta el SQL original de `docker/postgres/database.sql` solo cuando el volumen está vacío. El baseline se registra una sola vez con el comando indicado arriba. Al arrancar, la API ejecuta `prisma migrate deploy` y aplica únicamente las migraciones pendientes antes de iniciar NestJS. No vuelve a cargar el dataset en bases existentes.
 
 Después de cambiar el código, ejecutar nuevamente `docker compose up --build -d --wait`.
 
@@ -53,6 +56,8 @@ Usar Node.js 24 (`nvm use` si tenés nvm), y copiar `.env.example` a `.env`.
 ```sh
 docker compose up -d db --wait
 npm ci
+# Solo si esta base original todavía no tiene baseline registrado:
+npm run db:baseline
 npm run build
 npm start
 ```
@@ -103,10 +108,11 @@ La búsqueda acepta `page` (por defecto `1`) y `limit` (por defecto `20`, máxim
 
 La respuesta es `{ items, total, page, limit, totalPages }`. `items` contiene objetos `{ id, ticker, name, type }` ordenados por ticker e ID. `total` cuenta todas las coincidencias y `totalPages` indica la cantidad de páginas. Esta estructura reemplaza el array anterior; los consumidores deben leer `items`. Incluye acciones y monedas: ARS puede encontrarse por ticker (`ars`) o nombre (`pesos`). Si no hay coincidencias, devuelve `items: []`, `total: 0` y `totalPages: 0`. Una página posterior a la última devuelve `items: []` y conserva los totales. Una búsqueda ausente, vacía o inválida, o parámetros de paginación inválidos, devuelve HTTP 400.
 
-Las pruebas funcionales usan la base con el SQL original y no modifican datos:
+Las pruebas funcionales de instrumentos usan la base migrada con el dataset del challenge y no modifican datos:
 
 ```sh
 docker compose up -d db --wait
+npm run db:migrate
 npm run test:instruments
 ```
 
@@ -140,23 +146,47 @@ La separación de pruebas por responsabilidad, los escenarios de integración y 
 - `src/shared/infrastructure/http/health.controller.ts`: consulta `SELECT 1` mediante Prisma; responde 503 si la base no está disponible. Es una comprobación de infraestructura, sin lógica de negocio.
 - `prisma/schema.prisma`: mapeo de las tablas originales y de `account_snapshots`, el estado derivado de cada cuenta.
 - `prisma.config.ts`: configuración de conexión para la CLI de Prisma.
-- `docker/postgres/database.sql`: datos del challenge, con IDs BIGINT y ajustes de esquema del proyecto.
+- `prisma/migrations/`: historial SQL versionado del esquema.
+- `docker/postgres/database.sql`: SQL original del challenge, sin modificaciones, con esquema y datos.
+- `prisma/baseline.prisma`: descripción del esquema original para verificar su adopción.
 
 PostgreSQL convierte los identificadores sin comillas a minúsculas. Los modelos usan `@map` para exponer campos como `userId` sin renombrar columnas. La cotización usa `date`, tal como aparece en el SQL.
 
 Prisma 7 utiliza el adaptador PostgreSQL y genera el cliente en `src/generated/prisma`, excluido de Git y generado durante el build. Referencia: [configuración de Prisma 7](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7).
 
-### Gestión del esquema y base de datos preexistente
+### Gestión del esquema con Prisma Migrate
 
-El diseño toma la base proporcionada como punto de partida y adopta un supuesto conservador: pertenece a un ecosistema externo y la aplicación no es responsable de administrar su esquema ni tiene autoridad para modificarlo automáticamente. Por eso se respetan los nombres y convenciones existentes mediante los mapeos de Prisma, y no se utiliza **Prisma Migrate** para gestionar su evolución. Este supuesto se refiere a la administración del esquema, no a las lecturas y escrituras de negocio que realiza la API.
+Docker inicializa PostgreSQL con el archivo original del challenge (`docker/postgres/database.sql`), conservado sin cambios. Prisma administra únicamente la evolución posterior:
 
-La entrega incluye ajustes de esquema necesarios para la solución, documentados en `docker/postgres/database.sql` y reflejados en `prisma/schema.prisma`; no implica que la base original permanezca intacta. En un entorno administrado externamente, esos ajustes deberían coordinarse y aplicarse por el responsable de la base antes de desplegar la aplicación. Para reproducir el challenge localmente, el SQL inicializa el esquema únicamente sobre un volumen vacío; la aplicación no aplica esos cambios al arrancar.
+1. `0_challenge_base` contiene el esquema original, sin datos. `db:baseline` verifica que la base coincida con `prisma/baseline.prisma` y lo registra como aplicado, porque Docker ya creó las tablas. Esta migración también permite reconstruir el esquema en la base sombra de Prisma durante el desarrollo.
+2. `20260911010000_application_schema` aplica las diferencias hacia `schema.prisma`: IDs, referencias y secuencias BIGINT; importes de precisión 18,2; índices; `transactionid` único y `originalrequest`; y `account_snapshots`. Se ejecuta en una transacción y conserva los datos existentes.
 
-Si la aplicación fuera propietaria del esquema y responsable de su evolución, se habría utilizado **Prisma Migrate** para versionar los cambios y aplicarlos de forma controlada durante el despliegue.
+La migración de IDs y referencias de `INT` a `BIGINT`, junto con la ampliación de sus secuencias, contempla un escenario productivo con un alto volumen acumulado de órdenes. Evita que la generación de identificadores quede limitada al máximo positivo de `INT` (2.147.483.647), conservando los IDs existentes y la continuidad de los contadores.
+
+El baseline es un paso explícito de inicialización, ejecutado una sola vez por base. Después, `npm start` y `npm run start:dev` ejecutan únicamente `npm run db:migrate` antes de iniciar Node. En Docker, el comando es `npm run db:migrate && exec node dist/main.js`. Prisma consulta su historial, aplica las migraciones pendientes y utiliza su bloqueo nativo para evitar aplicaciones simultáneas. Si falla, la API no arranca. En modo watch, las migraciones se revisan al iniciar el comando, no en cada reinicio interno de Node.
+
+Si se omite el baseline sobre una base inicializada con el SQL original, Prisma rechazará la adopción de esa base no vacía. Ejecutar `db:baseline` antes del primer arranque; no repetirlo en bases que ya tienen historial.
+
+Las columnas originales conservan su nulabilidad en PostgreSQL. Los campos requeridos en `schema.prisma` expresan el supuesto semántico de la aplicación de que esos datos están presentes; no se agregan restricciones `NOT NULL` sobre ellos. La tabla nueva `account_snapshots` sí define sus campos obligatorios.
+
+Para cambios futuros, editar `schema.prisma`, generar la migración con `npm run db:migrate:dev -- --create-only --name nombre_del_cambio` y revisar el SQL antes de aplicarlo. Prisma puede volver a proponer `SET NOT NULL` por esa diferencia intencional: retirarlos para conservar esta decisión, aplicar con `npm run db:migrate` y versionar el SQL junto con el esquema. En despliegues usar `npm run db:migrate`. `prisma generate` solo genera el cliente; no modifica la base.
+
+#### Bases existentes modificadas manualmente
+
+Una base con el SQL original debe ejecutar una vez `npm run db:baseline`; luego puede iniciar la app normalmente. Si ya recibió los cambios de la aplicación sin historial Prisma, hacer un backup, revisar las diferencias con `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` y alinearla con el esquema final sin borrar datos. Solo después de comprobar que los cambios de ambas migraciones están presentes, registrar ambas como aplicadas. La comparación con Prisma mostrará los `SET NOT NULL` omitidos intencionalmente; no aplicarlos:
+
+```sh
+npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script
+npx prisma migrate resolve --applied 0_challenge_base
+npx prisma migrate resolve --applied 20260911010000_application_schema
+npm run db:migrate
+```
+
+No registrar una migración como aplicada si sus cambios no están presentes. La diferencia intencional de nulabilidad no debe confundirse con cambios pendientes. La aplicación presupone valores presentes en los campos requeridos de Prisma; esa definición no impide por sí sola insertar NULL mediante SQL. No se requiere borrar el volumen.
 
 El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
 
-La prueba funcional de envío de órdenes está en `test/e2e/orders.e2e.test.mjs` y usa una base de pruebas aislada.
+La prueba funcional de envío de órdenes está en `test/e2e/orders.e2e.test.ts` y usa una base de pruebas aislada.
 
 ## Portfolio
 
@@ -223,6 +253,9 @@ El caso de uso depende de un puerto transaccional. Prisma bloquea la fila del us
 
 ```sh
 npm run test:db:up
+# Una vez por cada base temporal nueva:
+npm run test:db:baseline
+npm run test:db:migrate
 npm test
 # Solo órdenes:
 npm run test:orders
@@ -230,7 +263,7 @@ npm run lint
 npm run test:db:down
 ```
 
-`compose.test.yaml` levanta PostgreSQL en localhost:55432, con la base `cocos_test` inicializada desde el SQL del challenge y almacenamiento temporal. `npm test` y `test:orders` cargan `.env.test.example` y permiten overrides desde `.env.test`. Las variables ya exportadas en la terminal tienen prioridad.
+`compose.test.yaml` levanta PostgreSQL en localhost:55432, con la base `cocos_test` y almacenamiento temporal. Docker carga el SQL original. `test:db:baseline` registra la base inicial y `test:db:migrate` aplica las migraciones; ambos usan la configuración de pruebas. Si la base ya está migrada, omitir `test:db:baseline`. `npm test` y `test:orders` cargan `.env.test.example` y permiten overrides desde `.env.test`. Las variables ya exportadas en la terminal tienen prioridad.
 
 Las pruebas de escritura exigen que el nombre de base termine en `_test`, crean usuarios propios y eliminan únicamente sus fixtures al finalizar. No operan sobre el usuario 1 del seed. Al detener y recrear el contenedor de pruebas se reinicializa su almacenamiento temporal. `test:instruments` consulta la configuración local; `test:portfolio` también puede inicializar snapshots faltantes, sin cambiar órdenes del seed.
 
@@ -322,7 +355,7 @@ Para garantizar la consistencia de la base de datos y evitar el procesamiento de
 - **Validación de `transactionId`:** Cada solicitud de orden valida un identificador único (`transactionId`). Un identificador nuevo crea la orden con HTTP 201. Si se repite con el mismo usuario y solicitud equivalente, devuelve la orden existente con HTTP 200 y su estado actual, sin recalcular precios, modificar el snapshot ni ejecutar nuevamente. Una solicitud o usuario diferente recibe HTTP 409.
 - **Compatibilidad con datos iniciales:** La columna permite valores `NULL` exclusivamente para preservar la compatibilidad con el dataset provisto inicialmente en el challenge.
 - **Comparación de solicitudes:** `orders.originalrequest` guarda una representación normalizada de instrumento, side, type, size, amount y price. Los importes equivalentes (`10` y `"10.00"`) coinciden; cambiar de size a amount se considera otra solicitud. El precio de ejecución MARKET no participa de la comparación. Órdenes anteriores sin esta información devuelven 409; no se infiere la intención original a partir del resultado.
-- **Esquema existente:** El SQL inicial incluye `originalRequest TEXT`. Para una base ya creada, ejecutar `ALTER TABLE orders ADD COLUMN IF NOT EXISTS originalrequest TEXT;` antes de arrancar la nueva versión.
+- **Esquema existente:** `originalrequest` forma parte de la migración de cambios de la aplicación. Para bases anteriores a Prisma Migrate, seguir el procedimiento de adopción antes de arrancar la API.
 - **Identificador obligatorio:** El cliente debe proporcionar `transactionId`; si falta, la API devuelve 400. El índice único global se conserva para proteger también las solicitudes simultáneas.
 
 
