@@ -27,6 +27,13 @@ async function search(term: string) {
   return instrumentPage.parse(await response.json()).items;
 }
 
+async function searchPage(parameters: Record<string, string>) {
+  const response = await fetch(`${baseUrl}/instruments?${new URLSearchParams(parameters)}`);
+  assert.equal(response.status, 200);
+  return instrumentPage.parse(await response.json());
+}
+
+
 void test('finds a partial ticker, ignoring case and surrounding whitespace', async () => {
   const results = await search('  ypF  ');
   assert.deepEqual(results, [
@@ -58,11 +65,6 @@ void test('rejects missing, blank, and repeated search terms', async () => {
   }
 });
 
-async function searchPage(parameters: Record<string, string>) {
-  const response = await fetch(`${baseUrl}/instruments?${new URLSearchParams(parameters)}`);
-  assert.equal(response.status, 200);
-  return instrumentPage.parse(await response.json());
-}
 
 void test('finds partial names in ticker order with default pagination metadata', async () => {
   const result = await searchPage({ query: 'mOLin' });
