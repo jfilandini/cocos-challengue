@@ -11,7 +11,7 @@ try {
   for (;;) {
     const users = await prisma.user.findMany({
       where: requestedId === undefined ? {} : { id: requestedId },
-      orderBy: { id: 'asc' }, take: 100,
+      orderBy: { id: 'asc' }, take: 1000,
       ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 }),
       select: { id: true },
     });
@@ -22,7 +22,7 @@ try {
       }, { isolationLevel: 'ReadCommitted', timeout: 120000, maxWait: 10000 });
       count++;
     }
-    if (users.length < 100) break;
+    if (users.length < 1000) break;
     cursor = users.at(-1).id;
   }
   if (requestedId !== undefined && count === 0) throw new Error('User not found');
