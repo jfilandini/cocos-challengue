@@ -378,22 +378,11 @@ En un entorno productivo orientado a **microservicios**, las responsabilidades p
 
 Cuando una operación afecta bases de datos de varios servicios, se necesita coordinar sus cambios y manejar fallas parciales. Una opción es el **patrón Saga**, mediante orquestación o coreografía: cada servicio ejecuta una transacción local ACID y, si el flujo falla, se aplican acciones compensatorias. Saga permite alcanzar consistencia eventual; no garantiza una transacción ACID global. Los invariantes que requieran consistencia inmediata deberían mantenerse dentro de una misma frontera transaccional.
 
-### 3. Mantenimiento y Auditoría de Dependencias
-
-Se corrigen las vulnerabilidades transitivas con overrides, manteniendo Nest 11 y Prisma 7:
-
-| Dependencia | Versión fijada |
-| --- | --- |
-| `@nestjs/platform-express → multer` | `2.3.0` |
-| `@prisma/config → deepmerge-ts` | `8.0.2` |
-| `prisma → mysql2` | `3.24.4` |
-
-`deepmerge-ts` cambia de versión mayor; se verificaron la configuración de Prisma, el build y los tests. Revisar estos overrides al actualizar Nest o Prisma y repetir `npm audit` y `npm test`.
-
-### 4. Auditoría de Operaciones
+### 3. Auditoría de Operaciones
 
 Incorporar un historial **append-only** de órdenes y movimientos de fondos, con actor, fecha, correlación y estados anterior/nuevo. Guardarlo en PostgreSQL dentro de la misma transacción que la operación. Actualmente solo se conserva el estado de las órdenes, no todas sus transiciones.
 
-### 5. Normalización de Posiciones del Snapshot
+### 4. Normalización de Posiciones del Snapshot
 
 Si crecen las posiciones por cuenta, reemplazar el JSON por `account_snapshot_positions`, con una fila por `(user_id, instrument_id)`, cantidad, reservas, costo e indicador de inconsistencia. Permitiría actualizar una posición sin reescribir las demás y agregar restricciones de integridad. Efectivo, posiciones y órdenes deben seguir actualizándose en la misma transacción, conservando la coordinación por usuario.
+
