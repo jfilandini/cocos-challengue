@@ -7,7 +7,7 @@ import type { OrderTransaction } from '../../src/orders/application/ports/order.
 const unexpected = () => assert.fail('Unexpected call to an unconfigured port operation');
 
 export function instrumentRepository(overrides: Partial<InstrumentRepository>): InstrumentRepository {
-  return { search: unexpected, findInstrumentById: unexpected, ...overrides };
+  return { search: unexpected, ...overrides };
 }
 
 export function portfolioRepository(overrides: Partial<PortfolioRepository>): PortfolioRepository {
@@ -16,7 +16,7 @@ export function portfolioRepository(overrides: Partial<PortfolioRepository>): Po
 
 export function orderTransaction(overrides: Partial<OrderTransaction>): OrderTransaction {
   return {
-    findByTransactionId: unexpected, readSnapshot: unexpected, initializeSnapshot: unexpected,
+    findInstrumentById: unexpected, findByTransactionId: unexpected, readSnapshot: unexpected, initializeSnapshot: unexpected,
     save: unexpected, findOrder: unexpected, cancel: unexpected, ...overrides,
   };
 }

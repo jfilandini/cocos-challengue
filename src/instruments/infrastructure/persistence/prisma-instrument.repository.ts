@@ -35,11 +35,4 @@ export class PrismaInstrumentRepository implements InstrumentRepository {
       return { items, total };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
-  async findInstrumentById(id: bigint) {
-    const instrument = await this.prisma.instrument.findUnique({
-      where: { id },
-      select: { ticker: true, type: true, marketData: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { close: true } } },
-    });
-    return instrument ? { ticker: instrument.ticker, type: isInstrumentType(instrument.type) ? instrument.type : null, close: instrument.marketData[0]?.close.toString() ?? null } : null;
-  }
 }

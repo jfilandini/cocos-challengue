@@ -1,4 +1,4 @@
-import { instrumentRepository, orderTransaction } from '../support/ports.js';
+import { orderTransaction } from '../support/ports.js';
 import type { OrderRepository, OrderTransaction } from '../../src/orders/application/ports/order.repository.js';
 import type { SubmittedOrder, CancelledOrder } from '../../src/orders/domain/order.js';
 import { InstrumentType } from '../../src/shared/domain/instrument-type.js';
@@ -36,7 +36,7 @@ void test('submission initializes a missing snapshot and saves the calculated or
       assert.equal(originalRequest, serializeOrderRequest(request));
       return { ...draft, id: 7n, transactionId, datetime: '2026-01-01T00:00:00.000Z' };
     },
-  }), instrumentRepository({
+
     async findInstrumentById(id) {
       assert.equal(id, 1n);
       return { ticker: 'TEST', type: InstrumentType.ACCIONES, close: '10' };
@@ -54,7 +54,7 @@ void test('an equivalent retry returns the stored order without reading prices, 
     async readSnapshot() { assert.fail('Retries must not read snapshots'); },
     async initializeSnapshot() { assert.fail('Retries must not initialize snapshots'); },
     async save() { assert.fail('Retries must not save'); },
-  }), instrumentRepository({
+
     async findInstrumentById() { assert.fail('Retries must not read current prices'); },
   }));
   assert.deepEqual(await useCase.execute('1', request), { order: stored, created: false });
@@ -66,7 +66,7 @@ void test('quantity calculated from amount is validated before saving', async ()
     async findByTransactionId() { return null; },
     async readSnapshot() { return { ...snapshot, settledCash: '3000000000' }; },
     async save() { assert.fail('An overflowing quantity must not be persisted'); },
-  }), instrumentRepository({
+
     async findInstrumentById() { return { ticker: 'TEST', type: InstrumentType.ACCIONES, close: '1' }; },
   }));
   await assert.rejects(useCase.execute('1', { ...request, size: undefined, amount: '2147483648.00' }), /Order size must be at most 2147483647/);

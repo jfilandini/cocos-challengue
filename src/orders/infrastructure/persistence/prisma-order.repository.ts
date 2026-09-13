@@ -1,3 +1,4 @@
+import { isInstrumentType } from '../../../shared/domain/instrument-type';
 import { isOrderSide } from '../../../shared/domain/order-side';
 import { isOrderType } from '../../../shared/domain/order-type';
 import { ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY, type AccountSnapshotRepositoryFactory } from '../../../snapshot/application/ports/account-snapshot.repository';
@@ -31,6 +32,13 @@ export class PrismaOrderRepository implements OrderRepository {
       const users = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       if (!users.length) throw new OrderResourceNotFoundError('User not found');
       return work({
+        async findInstrumentById(id: bigint) {
+          const instrument = await tx.instrument.findUnique({
+            where: { id },
+            select: { ticker: true, type: true, marketData: { orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1, select: { close: true } } },
+          });
+          return instrument ? { ticker: instrument.ticker, type: isInstrumentType(instrument.type) ? instrument.type : null, close: instrument.marketData[0]?.close.toString() ?? null } : null;
+        },
         async findByTransactionId(transactionId) {
           const order = await tx.order.findUnique({
             where: { transactionId },

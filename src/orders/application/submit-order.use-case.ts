@@ -6,12 +6,9 @@ import { isCashTransfer, isInstrumentOrder } from '../../shared/domain/order-sid
 import { generateOrderDraft, InvalidOrderError, OrderIdempotencyConflictError, OrderResourceNotFoundError } from '../domain/order';
 import { validateOrder, validateOrderSize } from './order.schema';
 import type { OrderRepository } from './ports/order.repository';
-import type { InstrumentRepository } from '../../instruments/application/ports/instrument.repository';
-  
+
 export class SubmitOrderUseCase {
-  constructor(private readonly orders: OrderRepository,
-    private readonly instruments: InstrumentRepository,) {}
-  
+  constructor(private readonly orders: OrderRepository) {}
 
   async execute(userIdInput: unknown, body: unknown) {
     const userId = validateUserIdInput(userIdInput);
@@ -25,7 +22,7 @@ export class SubmitOrderUseCase {
         }
         return { order: existing.order, created: false };
       }
-      const instrumentWithLatestClose = await this.instruments.findInstrumentById(request.instrumentId);
+      const instrumentWithLatestClose = await transaction.findInstrumentById(request.instrumentId);
       if (!instrumentWithLatestClose) throw new OrderResourceNotFoundError('Instrument not found');
 
       if (isCashTransfer(request.side)) {

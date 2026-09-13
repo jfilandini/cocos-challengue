@@ -39,6 +39,9 @@ No se eliminan casos solo por compartir una regla: una prueba unitaria verifica 
 ```sh
 npm run test:unit
 npm run test:db:up
+# Una vez por cada base temporal nueva; omitir si ya tiene baseline:
+npm run test:db:baseline
+npm run test:db:migrate
 npm test
 # Solo órdenes, incluyendo dominio, esquema y casos de uso:
 npm run test:orders

@@ -17,7 +17,6 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../src/app.module.js';
 import { SubmitOrderUseCase } from '../../src/orders/application/submit-order.use-case.js';
 import { PrismaOrderRepository } from '../../src/orders/infrastructure/persistence/prisma-order.repository.js';
-import { PrismaInstrumentRepository } from '../../src/instruments/infrastructure/persistence/prisma-instrument.repository.js';
 import { PrismaPortfolioRepository } from '../../src/portfolio/infrastructure/persistence/prisma-portfolio.repository.js';
 import { PrismaAccountSnapshotRepository, PrismaAccountSnapshotRepositoryFactory } from '../../src/snapshot/infrastructure/persistence/account-snapshot.repository.js';
 import { PrismaService } from '../../src/shared/infrastructure/database/prisma.service.js';
@@ -377,6 +376,40 @@ void describe('HTTP: bigint identifiers and portfolio valuation', () => {
 });
 
 void describe('PostgreSQL integration: snapshots, reconstruction and atomicity', () => {
+  void test('order pricing sees an uncommitted quote in its own transaction and rolls back with the order', async () => {
+    const id = await user(1000);
+    const instrument = await prisma.instrument.create({ data: { ticker: 'TXQUOTE', name: 'Transaction quote fixture', type: InstrumentType.ACCIONES } });
+    createdInstruments.push(instrument.id);
+    await prisma.marketData.create({ data: { instrumentId: instrument.id, close: '10', date: new Date('2026-01-01') } });
+    let activeTransaction: Prisma.TransactionClient | undefined;
+    const snapshots = snapshotFactory((_repository, db) => {
+      activeTransaction = db;
+      return {};
+    });
+    const persistedOrders = new PrismaOrderRepository(prisma, snapshots);
+    const transactionId = randomUUID();
+    const orders: OrderRepository = {
+      withUserLock(userId, work) {
+        return persistedOrders.withUserLock(userId, async transaction => {
+          await present(activeTransaction).marketData.create({ data: { instrumentId: instrument.id, close: '20', date: new Date('2026-01-02') } });
+          await work(transaction);
+          // An out-of-transaction lookup would see the committed price of 10.
+          const saved = present(await transaction.findByTransactionId(transactionId));
+          assert.equal(saved.order.price, '20.00');
+          assert.equal(present(await transaction.readSnapshot()).settledCash, '960');
+          throw new Error('Rollback quote and order');
+        });
+      },
+    };
+    const useCase = new SubmitOrderUseCase(orders);
+    await assert.rejects(useCase.execute(id, { ...market, instrumentId: instrument.id, transactionId }), /Rollback quote and order/);
+    assert.equal(await prisma.order.findUnique({ where: { transactionId } }), null);
+    assert.equal(await prisma.accountSnapshot.findUnique({ where: { userId: id } }), null);
+    const quotes = await prisma.marketData.findMany({ where: { instrumentId: instrument.id } });
+    assert.equal(quotes.length, 1);
+    assert.equal(quotes[0]?.close.toFixed(2), '10.00');
+  });
+
   void test('persisted snapshots match reconstruction after fills, reservations, rejections and cancellations', async () => {
     const id = await user(1000);
     await submit(id, { ...market, size: 2 });
@@ -599,7 +632,7 @@ void describe('PostgreSQL integration: uniqueness, rollback and forced races', (
     await portfolio(id);
     const before = await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } });
     const body = { ...transfer, size: 50, transactionId: randomUUID() };
-    const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(prisma, failingSnapshotFactory()), new PrismaInstrumentRepository(prisma));
+    const useCase = new SubmitOrderUseCase(new PrismaOrderRepository(prisma, failingSnapshotFactory()));
     await assert.rejects(useCase.execute(id, body), /Snapshot write failed/);
     assert.equal(await prisma.order.count({ where: { userId: id, transactionId: body.transactionId } }), 0);
     assert.deepEqual(await prisma.accountSnapshot.findUniqueOrThrow({ where: { userId: id } }), before);
@@ -632,7 +665,7 @@ void describe('PostgreSQL integration: uniqueness, rollback and forced races', (
         }));
       },
     };
-    const useCase = new SubmitOrderUseCase(racingOrders, new PrismaInstrumentRepository(prisma));
+    const useCase = new SubmitOrderUseCase(racingOrders);
     const results = await Promise.allSettled(users.map(id => useCase.execute(id, { ...market, transactionId })));
     assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
     const failure: unknown = present(results.find(r => r.status === 'rejected')).reason;

@@ -1,8 +1,10 @@
+import type { InstrumentType } from '../../../shared/domain/instrument-type';
 import type { AccountSnapshot } from '../../../snapshot/domain/account-snapshot';
 import type { CancelledOrder, OrderDraft, SubmittedOrder } from '../../domain/order';
 import type { OrderStatus } from '../../../shared/domain/order-status';
 
 export interface OrderTransaction {
+  findInstrumentById(id: bigint): Promise<{ ticker: string; type: InstrumentType | null; close: string | null } | null>;
   findByTransactionId(transactionId: string): Promise<{ order: SubmittedOrder; originalRequest: string | null } | null>;
   readSnapshot(): Promise<AccountSnapshot | null>;
   initializeSnapshot(): Promise<AccountSnapshot>;
