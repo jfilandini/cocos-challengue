@@ -3,6 +3,7 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GetPortfolioUseCase } from '../../application/get-portfolio.use-case';
 import { GetPortfolioByAccountNumberUseCase } from '../../application/get-portfolio-by-account-number.use-case';
 import { PortfolioResponseDto } from './dto/portfolio-response.dto';
+import type { PortfolioPositionDto } from './dto/portfolio-response.dto';
 import { ErrorResponseDto } from '../../../shared/infrastructure/http/dto/error-response.dto';
 
 @ApiTags('Portfolio')
@@ -44,7 +45,7 @@ export class PortfolioController {
     description: 'Precios de mercado no disponibles para la valuación de la cartera',
     type: ErrorResponseDto,
   })
-  async getByUserId(@Param('userId') userId: string) {
+  async getByUserId(@Param('userId') userId: string): Promise<PortfolioResponseDto> {
     return this.toResponse(await this.getPortfolioByUser.execute(userId));
   }
 
@@ -84,16 +85,33 @@ export class PortfolioController {
     description: 'Precios de mercado no disponibles para la valuación de la cartera',
     type: ErrorResponseDto,
   })
-  async getByAccountNumber(@Param('accountNumber') accountNumber: string) {
+  async getByAccountNumber(@Param('accountNumber') accountNumber: string): Promise<PortfolioResponseDto> {
     return this.toResponse(await this.getPortfolioByAccount.execute(accountNumber));
   }
-  private toResponse(portfolio: Awaited<ReturnType<GetPortfolioUseCase['execute']>>) {
+  private toResponse(portfolio: Awaited<ReturnType<GetPortfolioUseCase['execute']>>): PortfolioResponseDto {
     return {
-      ...portfolio,
       userId: portfolio.userId.toString(),
-      positions: portfolio.positions.map(position => ({ ...position, instrumentId: position.instrumentId.toString() })),
+      currency: portfolio.currency,
+      totalValue: portfolio.totalValue,
+      cashBalance: portfolio.cashBalance,
+      reservedCash: portfolio.reservedCash,
+      availableCash: portfolio.availableCash,
+      positions: portfolio.positions.map((position): PortfolioPositionDto => ({
+        type: position.type,
+        instrumentId: position.instrumentId.toString(),
+        ticker: position.ticker,
+        name: position.name,
+        quantity: position.quantity,
+        reservedQuantity: position.reservedQuantity,
+        availableQuantity: position.availableQuantity,
+        price: position.price,
+        priceDate: position.priceDate,
+        marketValue: position.marketValue,
+        totalReturnPercent: position.totalReturnPercent,
+        dailyReturnPercent: position.dailyReturnPercent,
+        inconsistentHistory: position.inconsistentHistory,
+      })),
     };
   }
 }
-
 

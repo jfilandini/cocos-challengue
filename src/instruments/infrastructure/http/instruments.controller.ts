@@ -2,6 +2,7 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { SearchInstrumentsUseCase } from '../../application/search-instruments.use-case';
 import { InstrumentSearchPageDto } from './dto/instrument-search-page.dto';
+import type { InstrumentResponseDto } from './dto/instrument-response.dto';
 import { ErrorResponseDto } from '../../../shared/infrastructure/http/dto/error-response.dto';
 
 @ApiTags('Instruments')
@@ -33,9 +34,19 @@ export class InstrumentsController {
     description: 'Parámetro query, page o limit inválido',
     type: ErrorResponseDto,
   })
-  async search(@Query('query') query: unknown, @Query('page') page: unknown, @Query('limit') limit: unknown) {
+  async search(@Query('query') query: unknown, @Query('page') page: unknown, @Query('limit') limit: unknown): Promise<InstrumentSearchPageDto> {
     const result = await this.searchInstruments.execute(query, page, limit);
-    return { ...result, items: result.items.map(instrument => ({ ...instrument, id: instrument.id.toString() })) };
+    return {
+      items: result.items.map((instrument): InstrumentResponseDto => ({
+        id: instrument.id.toString(),
+        ticker: instrument.ticker,
+        name: instrument.name,
+        type: instrument.type,
+      })),
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+    };
   }
 }
-

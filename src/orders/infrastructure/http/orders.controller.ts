@@ -50,9 +50,9 @@ export class OrdersController {
     description: 'La orden no se puede cancelar porque no se encuentra en estado NEW',
     type: ErrorResponseDto,
   })
-  async cancel(@Param('userId') userId: string, @Param('orderId') orderId: string) {
+  async cancel(@Param('userId') userId: string, @Param('orderId') orderId: string): Promise<CancelOrderResponseDto> {
     const order = await this.cancelOrder.execute(userId, orderId);
-    return { ...order, id: order.id.toString(), userId: order.userId.toString() };
+    return { id: order.id.toString(), userId: order.userId.toString(), status: order.status };
   }
 
   @Post()
@@ -96,9 +96,20 @@ export class OrdersController {
     type: ErrorResponseDto,
   })
   @ApiResponse({ status: 200, description: 'Reintento equivalente: devuelve la orden existente con su estado actual', type: OrderResponseDto })
-  async submit(@Param('userId') userId: string, @Body() body: unknown, @Res({ passthrough: true }) response: { status(code: number): unknown }) {
+  async submit(@Param('userId') userId: string, @Body() body: unknown, @Res({ passthrough: true }) response: { status(code: number): unknown }): Promise<OrderResponseDto> {
     const { order, created } = await this.submitOrder.execute(userId, body);
     response.status(created ? 201 : 200);
-    return { ...order, id: order.id.toString(), userId: order.userId.toString(), instrumentId: order.instrumentId.toString() };
+    return {
+      id: order.id.toString(),
+      userId: order.userId.toString(),
+      instrumentId: order.instrumentId.toString(),
+      transactionId: order.transactionId,
+      side: order.side,
+      type: order.type,
+      size: order.size,
+      price: order.price,
+      status: order.status,
+      datetime: order.datetime,
+    };
   }
 }
