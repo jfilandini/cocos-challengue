@@ -1,12 +1,12 @@
 import { isInstrumentType } from '../../../shared/domain/instrument-type';
 import { isOrderSide } from '../../../shared/domain/order-side';
 import { isOrderType } from '../../../shared/domain/order-type';
-import { ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY, type AccountSnapshotRepositoryFactory } from '../../../snapshot/application/ports/account-snapshot.repository';
+import { PrismaAccountSnapshotRepository } from '../../../account-snapshot/infrastructure/persistence/account-snapshot.repository';
 import { Prisma } from '../../../generated/prisma/client';
 import { z } from 'zod';
-import { toSnapshotOrder } from '../../../snapshot/infrastructure/persistence/snapshot-order.mapper';
-import { applyOrder, releaseOrderReservation, PortfolioDataError } from '../../../snapshot/domain/account-snapshot';
-import { Inject, Injectable } from '@nestjs/common';
+import { toSnapshotOrder } from '../../../account-snapshot/infrastructure/persistence/snapshot-order.mapper';
+import { applyOrder, releaseOrderReservation, PortfolioDataError } from '../../../account-snapshot/domain/account-snapshot';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
 import { isOrderStatus, OrderStatus } from '../../../shared/domain/order-status';
 import { OrderCancellationError, OrderIdempotencyConflictError, OrderResourceNotFoundError } from '../../domain/order';
@@ -20,15 +20,11 @@ const transactionConstraintMetadata = z.object({
 
 @Injectable()
 export class PrismaOrderRepository implements OrderRepository {
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject(ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY)
-    private readonly snapshots: AccountSnapshotRepositoryFactory<Prisma.TransactionClient>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   withUserLock<T>(userId: bigint, work: (transaction: OrderTransaction) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async tx => {
-      const snapshots = this.snapshots.forTransaction(tx);
+      const snapshots = new PrismaAccountSnapshotRepository(tx);
       const users = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
       if (!users.length) throw new OrderResourceNotFoundError('User not found');
       return work({

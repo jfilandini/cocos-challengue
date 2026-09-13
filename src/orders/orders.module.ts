@@ -1,4 +1,4 @@
-import { SnapshotModule } from '../snapshot/snapshot.module';
+import { AccountSnapshotModule } from '../account-snapshot/account-snapshot.module';
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../shared/infrastructure/database/database.module';
 import { SubmitOrderUseCase } from './application/submit-order.use-case';
@@ -10,7 +10,7 @@ import { PrismaOrderRepository } from './infrastructure/persistence/prisma-order
 const ORDER_REPOSITORY = Symbol('OrderRepository');
 
 @Module({
-  imports: [SnapshotModule, DatabaseModule],
+  imports: [AccountSnapshotModule, DatabaseModule],
   controllers: [OrdersController],
   providers: [
     { provide: ORDER_REPOSITORY, useClass: PrismaOrderRepository },

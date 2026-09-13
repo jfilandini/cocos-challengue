@@ -1,5 +1,5 @@
 import type { InstrumentType } from '../../../shared/domain/instrument-type';
-import type { AccountSnapshot } from '../../../snapshot/domain/account-snapshot';
+import type { AccountSnapshot } from '../../../account-snapshot/domain/account-snapshot';
 import type { CancelledOrder, OrderDraft, SubmittedOrder } from '../../domain/order';
 import type { OrderStatus } from '../../../shared/domain/order-status';
 

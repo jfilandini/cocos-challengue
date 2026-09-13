@@ -1,4 +1,4 @@
-import { SnapshotModule } from '../snapshot/snapshot.module';
+import { AccountSnapshotModule } from '../account-snapshot/account-snapshot.module';
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../shared/infrastructure/database/database.module';
 import { GetPortfolioUseCase } from './application/get-portfolio.use-case';
@@ -10,7 +10,7 @@ import { PrismaPortfolioRepository } from './infrastructure/persistence/prisma-p
 const PORTFOLIO_REPOSITORY = Symbol('PortfolioRepository');
 
 @Module({
-  imports: [SnapshotModule, DatabaseModule],
+  imports: [AccountSnapshotModule, DatabaseModule],
   controllers: [PortfolioController],
   providers: [
     { provide: PORTFOLIO_REPOSITORY, useClass: PrismaPortfolioRepository },

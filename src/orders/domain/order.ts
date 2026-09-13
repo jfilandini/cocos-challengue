@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import { OrderSide } from '../../shared/domain/order-side';
 import { OrderStatus } from '../../shared/domain/order-status';
 import { OrderType } from '../../shared/domain/order-type';
-import type { AccountSnapshot } from '../../snapshot/domain/account-snapshot';
+import type { AccountSnapshot } from '../../account-snapshot/domain/account-snapshot';
 
 const Amount = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 const CASH_PRICE = '1.00';

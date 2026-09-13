@@ -1,6 +1,5 @@
-import { ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY, type AccountSnapshotRepositoryFactory } from '../../../snapshot/application/ports/account-snapshot.repository';
-import type { PrismaDbClient } from '../../../snapshot/infrastructure/persistence/account-snapshot.repository';
-import { Inject, Injectable } from '@nestjs/common';
+import { PrismaAccountSnapshotRepository } from '../../../account-snapshot/infrastructure/persistence/account-snapshot.repository';
+import { Injectable } from '@nestjs/common';
 import { InstrumentType } from '../../../shared/domain/instrument-type';
 import { Currency } from '../../../shared/domain/currency';
 import { PrismaService } from '../../../shared/infrastructure/database/prisma.service';
@@ -9,11 +8,7 @@ import { type PortfolioSnapshot } from '../../domain/portfolio';
 
 @Injectable()
 export class PrismaPortfolioRepository implements PortfolioRepository {
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject(ACCOUNT_SNAPSHOT_REPOSITORY_FACTORY)
-    private readonly snapshots: AccountSnapshotRepositoryFactory<PrismaDbClient>,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   findByUserId(userId: bigint): Promise<PortfolioSnapshot | null> {
     return this.find({ id: userId });
@@ -30,14 +25,14 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
     const userId = users[0].id;
 
     
-    let account = await this.snapshots.forTransaction(this.prisma).read(userId);
+    let account = await new PrismaAccountSnapshotRepository(this.prisma).read(userId);
 
     // Slow path: acquire exclusive user lock only if snapshot has not been generated yet
     if (!account) {
       account = await this.prisma.$transaction(async tx => {
         const locked = await tx.$queryRaw<{ id: bigint }[]>`SELECT id FROM users WHERE id = ${userId} FOR UPDATE`;
         if (!locked.length) return null;
-        return this.snapshots.forTransaction(tx).initialize(userId);
+        return new PrismaAccountSnapshotRepository(tx).initialize(userId);
       }, { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 30000 });
       if (!account) return null;
     }

@@ -7,7 +7,7 @@ import { DomainExceptionFilter } from './shared/infrastructure/http/domain-excep
 import { InstrumentsModule } from './instruments/instruments.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { OrdersModule } from './orders/orders.module';
-import { SnapshotModule } from './snapshot/snapshot.module';
+import { AccountSnapshotModule } from './account-snapshot/account-snapshot.module';
 
 @Module({
   imports: [
@@ -32,7 +32,7 @@ import { SnapshotModule } from './snapshot/snapshot.module';
     InstrumentsModule,
     PortfolioModule,
     OrdersModule,
-    SnapshotModule,
+    AccountSnapshotModule,
   ],
   controllers: [HealthController],
   providers: [
