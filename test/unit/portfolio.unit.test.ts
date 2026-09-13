@@ -1,11 +1,11 @@
 import { InstrumentType } from '../../src/shared/domain/instrument-type.js';
 import { OrderSide } from '../../src/shared/domain/order-side.js';
-import type { SnapshotOrder } from '../../src/snapshot/domain/account-snapshot.js';
+import type { SnapshotOrder } from '../../src/account-snapshot/domain/account-snapshot.js';
 import type { PortfolioInstrument } from '../../src/portfolio/domain/portfolio.js';
 import { present } from '../support/assertions.js';
 import { OrderStatus } from '../../src/shared/domain/order-status.js';
 import { OrderType } from '../../src/shared/domain/order-type.js';
-import { rebuildSnapshot } from '../../src/snapshot/domain/account-snapshot.js';
+import { rebuildSnapshot } from '../../src/account-snapshot/domain/account-snapshot.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { calculatePortfolio, PortfolioPriceUnavailableError } from '../../src/portfolio/domain/portfolio.js';

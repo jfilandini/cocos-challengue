@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { PrismaService } from '../dist/shared/infrastructure/database/prisma.service.js';
-import { PrismaAccountSnapshotRepository } from '../dist/snapshot/infrastructure/persistence/account-snapshot.repository.js';
+import { PrismaAccountSnapshotRepository } from '../dist/account-snapshot/infrastructure/persistence/account-snapshot.repository.js';
 
 const prisma = new PrismaService();
 try {

@@ -1,3 +1,4 @@
+import { PrismaAccountSnapshotRepository } from '../../src/account-snapshot/infrastructure/persistence/account-snapshot.repository.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Prisma } from '../../src/generated/prisma/client.js';
@@ -23,8 +24,7 @@ void test('duplicate account matches fail before reading snapshots or quotes', a
   t.mock.property(db, 'instrument', instruments);
   t.mock.method(users, 'findMany', async (): Promise<Prisma.UserGetPayload<{ select: { id: true } }>[]> => [{ id: 1n }, { id: 2n }]);
   t.mock.method(instruments, 'findMany', () => assert.fail('Ambiguous accounts must not read quotes'));
-  const repository = new PrismaPortfolioRepository(db, {
-    forTransaction() { assert.fail('Ambiguous accounts must not read snapshots'); },
-  });
+  t.mock.method(PrismaAccountSnapshotRepository.prototype, 'read', () => assert.fail('Ambiguous accounts must not read snapshots'));
+  const repository = new PrismaPortfolioRepository(db);
   await assert.rejects(repository.findByAccountNumber('duplicate'), AmbiguousPortfolioAccountError);
 });

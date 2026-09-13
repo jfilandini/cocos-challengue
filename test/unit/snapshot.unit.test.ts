@@ -6,7 +6,7 @@ import {
   emptySnapshot,
   rebuildSnapshot,
   PortfolioDataError,
-} from '../../src/snapshot/domain/account-snapshot.js';
+} from '../../src/account-snapshot/domain/account-snapshot.js';
 import { OrderSide } from '../../src/shared/domain/order-side.js';
 import { OrderStatus } from '../../src/shared/domain/order-status.js';
 import { OrderType } from '../../src/shared/domain/order-type.js';

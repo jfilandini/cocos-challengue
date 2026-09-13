@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Prisma, PrismaClient } from '../../src/generated/prisma/client.js';
 import type { AccountSnapshot } from '../../src/generated/prisma/client.js';
-import { PrismaAccountSnapshotRepository } from '../../src/snapshot/infrastructure/persistence/account-snapshot.repository.js';
+import { PrismaAccountSnapshotRepository } from '../../src/account-snapshot/infrastructure/persistence/account-snapshot.repository.js';
 
 // Prisma is constructed lazily; all operations used here are intercepted without connecting.
 function client() {

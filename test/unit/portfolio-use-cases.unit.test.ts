@@ -1,7 +1,7 @@
 import { portfolioRepository } from '../support/ports.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { emptySnapshot } from '../../src/snapshot/domain/account-snapshot.js';
+import { emptySnapshot } from '../../src/account-snapshot/domain/account-snapshot.js';
 import { InvalidIdError } from '../../src/shared/domain/id-validator-helper.js';
 import { GetPortfolioUseCase, PortfolioUserNotFoundError } from '../../src/portfolio/application/get-portfolio.use-case.js';
 import { GetPortfolioByAccountNumberUseCase, InvalidPortfolioAccountError, PortfolioAccountNotFoundError } from '../../src/portfolio/application/get-portfolio-by-account-number.use-case.js';

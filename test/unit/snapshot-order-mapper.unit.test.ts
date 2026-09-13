@@ -1,8 +1,8 @@
 import { Prisma } from '../../src/generated/prisma/client.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { toSnapshotOrder } from '../../src/snapshot/infrastructure/persistence/snapshot-order.mapper.js';
-import { PortfolioDataError } from '../../src/snapshot/domain/account-snapshot.js';
+import { toSnapshotOrder } from '../../src/account-snapshot/infrastructure/persistence/snapshot-order.mapper.js';
+import { PortfolioDataError } from '../../src/account-snapshot/domain/account-snapshot.js';
 import { OrderSide } from '../../src/shared/domain/order-side.js';
 import { OrderStatus } from '../../src/shared/domain/order-status.js';
 import { OrderType } from '../../src/shared/domain/order-type.js';

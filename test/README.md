@@ -32,7 +32,7 @@ No se eliminan casos solo por compartir una regla: una prueba unitaria verifica 
 
 `npm run typecheck` verifica tanto la aplicación como las pruebas, y `npm run lint` aplica análisis de tipos a ambas. No se usan `any` ni conversiones de tipo para simular puertos incompletos. La regla `require-await` se desactiva solo en tests para permitir dobles asíncronos que devuelven fixtures.
 
-`support/` contiene dobles tipados de puertos, validación Zod de respuestas HTTP, una aserción de presencia y decoradores del puerto de snapshots para simular fallas conservando la transacción real. Los imports terminan en `.js` porque apuntan al archivo que emitirá TypeScript.
+`support/` contiene dobles tipados de puertos, validación Zod de respuestas HTTP, una aserción de presencia y mocks acotados a cada prueba para simular fallas de persistencia conservando la transacción real. Los imports terminan en `.js` porque apuntan al archivo que emitirá TypeScript.
 
 ## Ejecución
 
