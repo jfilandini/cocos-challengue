@@ -23,10 +23,61 @@ export interface PortfolioSnapshot {
 
 export class PortfolioPriceUnavailableError extends Error {}
 
+function calculateTotalReturnPercent(cost: Decimal, marketValue: Decimal, inconsistent: boolean): string | null {
+  if (inconsistent || !cost.gt(0)) return null;
+  return marketValue.minus(cost).div(cost).mul(100).toFixed(2);
+}
+
+function calculateDailyReturnPercent(close: Decimal, previousClose: string | null): string | null {
+  if (previousClose === null) return null;
+  const previousPrice = new Amount(previousClose);
+  if (!previousPrice.gt(0)) return null;
+  return close.minus(previousPrice).div(previousPrice).mul(100).toFixed(2);
+}
+
+interface CurrencyPosition {
+  type: InstrumentType.MONEDA;
+  instrumentId: bigint;
+  ticker: string;
+  name: string;
+  quantity: string;
+  reservedQuantity: string;
+  availableQuantity: string;
+  price: string;
+  priceDate: null;
+  marketValue: string;
+  totalReturnPercent: null;
+  dailyReturnPercent: null;
+  inconsistentHistory: boolean;
+}
+
+function createCurrencyPosition(snapshot: PortfolioSnapshot, settledCash: Decimal, reservedCash: Decimal): CurrencyPosition | null {
+  if (settledCash.isZero() && reservedCash.isZero()) return null;
+
+  const ars = snapshot.instruments.find(instrument => instrument.ticker === Currency.ARS);
+  if (!ars) throw new PortfolioDataError('ARS instrument unavailable');
+
+  return {
+    type: InstrumentType.MONEDA,
+    instrumentId: ars.id,
+    ticker: Currency.ARS,
+    name: ars.name,
+    quantity: settledCash.toFixed(2),
+    reservedQuantity: reservedCash.toFixed(2),
+    availableQuantity: settledCash.minus(reservedCash).toFixed(2),
+    price: '1.00',
+    priceDate: null,
+    marketValue: settledCash.toFixed(2),
+    totalReturnPercent: null,
+    dailyReturnPercent: null,
+    inconsistentHistory: settledCash.lt(0) || settledCash.lt(reservedCash),
+  };
+}
+
 export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) {
-  const cash = new Amount(snapshot.account.settledCash);
+  const settledCash = new Amount(snapshot.account.settledCash);
   const reservedCash = new Amount(snapshot.account.reservedCash);
-  let total = cash;
+  let total = settledCash;
   const instruments = new Map(snapshot.instruments.map(instrument => [instrument.id, instrument]));
   const stockPositions = snapshot.account.positions.filter(p => p.quantity !== 0).map(position => {
     const id = BigInt(position.instrumentId);
@@ -50,58 +101,23 @@ export function calculatePortfolio(userId: bigint, snapshot: PortfolioSnapshot) 
       price: close.toFixed(2),
       priceDate: instrument.date,
       marketValue: marketValue.toFixed(2),
-      totalReturnPercent: position.inconsistent || !cost.gt(0)
-        ? null : marketValue.minus(cost).div(cost).mul(100).toFixed(2),
-      dailyReturnPercent: instrument.previousClose !== null && new Amount(instrument.previousClose).gt(0)
-        ? close.minus(instrument.previousClose).div(instrument.previousClose).mul(100).toFixed(2) : null,
+      totalReturnPercent: calculateTotalReturnPercent(cost, marketValue, position.inconsistent),
+      dailyReturnPercent: calculateDailyReturnPercent(close, instrument.previousClose),
       inconsistentHistory: position.inconsistent,
     };
-  }).sort((a, b) => a.ticker.localeCompare(b.ticker) || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
-
-  const result: Array<(typeof stockPositions)[number] | {
-    type: InstrumentType.MONEDA;
-    instrumentId: bigint;
-    ticker: string;
-    name: string;
-    quantity: string;
-    reservedQuantity: string;
-    availableQuantity: string;
-    price: string;
-    priceDate: null;
-    marketValue: string;
-    totalReturnPercent: null;
-    dailyReturnPercent: null;
-    inconsistentHistory: boolean;
-  }> = [...stockPositions];
-
-  if (!cash.isZero() || !reservedCash.isZero()) {
-    const ars = snapshot.instruments.find(instrument => instrument.ticker === Currency.ARS);
-    if (!ars) throw new PortfolioDataError('ARS instrument unavailable');
-    result.push({
-      type: InstrumentType.MONEDA,
-      instrumentId: ars.id,
-      ticker: Currency.ARS,
-      name: ars.name,
-      quantity: cash.toFixed(2),
-      reservedQuantity: reservedCash.toFixed(2),
-      availableQuantity: cash.minus(reservedCash).toFixed(2),
-      price: '1.00',
-      priceDate: null,
-      marketValue: cash.toFixed(2),
-      totalReturnPercent: null,
-      dailyReturnPercent: null,
-      inconsistentHistory: cash.lt(0) || cash.lt(reservedCash),
-    });
-  }
-  result.sort((a, b) => a.ticker.localeCompare(b.ticker) || (a.instrumentId < b.instrumentId ? -1 : a.instrumentId > b.instrumentId ? 1 : 0));
+  });
+  const result: Array<(typeof stockPositions)[number] | CurrencyPosition> = [...stockPositions];
+  const currencyPosition = createCurrencyPosition(snapshot, settledCash, reservedCash);
+  if (currencyPosition) result.push(currencyPosition);
+  result.sort((leftPosition, rightPosition) => leftPosition.ticker.localeCompare(rightPosition.ticker) || (leftPosition.instrumentId < rightPosition.instrumentId ? -1 : leftPosition.instrumentId > rightPosition.instrumentId ? 1 : 0));
 
   return {
     userId,
     currency: Currency.ARS,
     totalValue: total.toFixed(2),
-    cashBalance: cash.toFixed(2),
+    cashBalance: settledCash.toFixed(2),
     reservedCash: reservedCash.toFixed(2),
-    availableCash: cash.minus(reservedCash).toFixed(2),
+    availableCash: settledCash.minus(reservedCash).toFixed(2),
     positions: result,
   };
 }
