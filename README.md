@@ -148,11 +148,11 @@ src/instruments/
   infrastructure/persistence/                 Adaptador de salida Prisma
   instruments.module.ts                       Composición e inyección de dependencias
 
-src/snapshot/
+src/account-snapshot/
   domain/account-snapshot.ts                   Modelos y funciones puras de transición de estado
   application/ports/account-snapshot.repository.ts Puerto de salida del repositorio
   infrastructure/persistence/                  Adaptador Prisma y mapper de órdenes
-  snapshot.module.ts                           Composición e inyección de dependencias
+  account-snapshot.module.ts                           Composición e inyección de dependencias
 ```
 
 El controlador invoca el caso de uso y convierte errores de entrada en HTTP 400. El caso de uso depende del contrato `InstrumentRepository`; el módulo NestJS lo conecta con `PrismaInstrumentRepository` mediante una fábrica. El adaptador Prisma implementa la búsqueda y el escape de patrones SQL, devolviendo modelos propios. La misma operación puede invocarse desde otro adaptador sin depender de HTTP.
@@ -373,7 +373,7 @@ Las pruebas funcionales usan PostgreSQL aislado y verifican persistencia, portfo
 Para evitar recorrer y recalcular el historial de órdenes del usuario en cada consulta de portfolio o validación de recursos, una vez inicializado el snapshot:
 
 - **Registro de órdenes como fuente de verdad (`orders`):** Conserva las órdenes y su estado actual (`FILLED`, `NEW`, `REJECTED`, `CANCELLED`). Las cancelaciones actualizan el estado de las órdenes pendientes; no se conserva un historial inmutable de eventos ni la fecha de cada transición. Las órdenes ejecutadas no se modifican desde la API.
-- **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`settledcash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes. Se gestiona desde su propio módulo [`src/snapshot/`](src/snapshot).
+- **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`settledcash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes. Se gestiona desde su propio módulo [`src/account-snapshot/`](src/account-snapshot).
 - **Actualización transaccional incremental (Escritura con bloqueo pesimista):** Las órdenes ejecutadas modifican saldos y posiciones, las pendientes reservan recursos y las cancelaciones liberan reservas, dentro de la misma transacción ACID que persiste la orden o su cambio de estado. Utiliza `SELECT ... FOR UPDATE` sobre el usuario para serializar la validación de fondos y evitar condiciones de carrera (*lost updates*). Las órdenes rechazadas no alteran esos recursos.
 - **Lectura desacoplada y no bloqueante (*Lock-free Read*):** Las consultas de portfolio leen la proyección materializada directamente sin abrir transacciones de bloqueo pesimista (`FOR UPDATE`), permitiendo lecturas concurrentes y maximizando el throughput sin interferir con los envíos de órdenes.
 - **Costo de las operaciones habituales:** El snapshot evita reproducir el historial de órdenes en cada consulta o validación. El trabajo sigue dependiendo de las posiciones y cotizaciones involucradas: se recorren y ordenan posiciones, y sus datos se leen y persisten como JSON.
