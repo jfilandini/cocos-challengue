@@ -25,6 +25,6 @@ void test('duplicate account matches fail before reading snapshots or quotes', a
   t.mock.method(users, 'findMany', async (): Promise<Prisma.UserGetPayload<{ select: { id: true } }>[]> => [{ id: 1n }, { id: 2n }]);
   t.mock.method(instruments, 'findMany', () => assert.fail('Ambiguous accounts must not read quotes'));
   t.mock.method(PrismaAccountSnapshotRepository.prototype, 'read', () => assert.fail('Ambiguous accounts must not read snapshots'));
-  const repository = new PrismaPortfolioRepository(db);
+  const repository = new PrismaPortfolioRepository(db, new PrismaAccountSnapshotRepository(db));
   await assert.rejects(repository.findByAccountNumber('duplicate'), AmbiguousPortfolioAccountError);
 });

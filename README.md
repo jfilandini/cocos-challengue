@@ -99,6 +99,8 @@ npm run prisma:studio
 
 Los ejemplos usan `http://localhost:3000`; ajustar el puerto según `API_PORT`.
 
+Los IDs de usuario, instrumento y orden deben ser enteros positivos de hasta `9223372036854775807` (BIGINT de PostgreSQL). Enviar IDs en JSON como strings decimales, por ejemplo `"9007199254740993"`, para conservar su precisión. Por compatibilidad se aceptan también números enteros positivos hasta `Number.MAX_SAFE_INTEGER` (`9007199254740991`); números mayores se rechazan con HTTP 400 antes de convertirlos a bigint. Los IDs en texto no admiten espacios, ceros iniciales, signos ni notación hexadecimal o exponencial. Esta validación no se aplica al número de cuenta, que conserva sus ceros iniciales.
+
 ### Estado del servicio — `GET /health`
 
 Comprueba la conexión con PostgreSQL. Devuelve HTTP 200 con `{"status":"ok","database":"up"}` o HTTP 503 si la base no está disponible.

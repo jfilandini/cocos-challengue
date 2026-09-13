@@ -8,7 +8,10 @@ import { type PortfolioSnapshot } from '../../domain/portfolio';
 
 @Injectable()
 export class PrismaPortfolioRepository implements PortfolioRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly snapshots: PrismaAccountSnapshotRepository,
+  ) {}
 
   findByUserId(userId: bigint): Promise<PortfolioSnapshot | null> {
     return this.find({ id: userId });
@@ -24,8 +27,7 @@ export class PrismaPortfolioRepository implements PortfolioRepository {
     if (users.length > 1) throw new AmbiguousPortfolioAccountError('Account number matches multiple users');
     const userId = users[0].id;
 
-    
-    let account = await new PrismaAccountSnapshotRepository(this.prisma).read(userId);
+    let account = await this.snapshots.read(userId);
 
     // Slow path: acquire exclusive user lock only if snapshot has not been generated yet
     if (!account) {

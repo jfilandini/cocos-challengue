@@ -132,6 +132,8 @@ void describe('HTTP: order submission and cash transfers', () => {
     const initial = await prisma.order.count({ where: { userId: id } });
     for (const body of [
       null, [], {}, { ...market, size: 0 }, { ...market, size: 1.5 }, { ...market, size: '2' },
+      { ...market, instrumentId: Number('9007199254740993') },
+      { ...market, instrumentId: '9223372036854775808' },
       { ...market, amount: '100' }, { ...market, price: '20' }, { ...market, side: OrderSide.CASH_IN },
       { ...market, type: OrderType.LIMIT }, { ...market, type: OrderType.LIMIT, price: '-1' },
       { ...market, type: OrderType.LIMIT, price: '1.001' }, { ...market, instrumentId: 66 },
@@ -444,13 +446,14 @@ void describe('PostgreSQL integration: snapshots, reconstruction and atomicity',
   void test('bootstrap reconstructs more than one ledger page; subsequent operations reuse the snapshot', async t => {
     const id = await user(0);
     await prisma.order.createMany({ data: Array.from({ length: 1005 }, (_, index) => ({ userId: id, instrumentId: 66n, side: OrderSide.CASH_IN, type: OrderType.MARKET, status: OrderStatus.FILLED, size: 1, price: '1', datetime: new Date(index % 2 ? '2023-01-01' : '2023-01-02') })) });
-    const portfolios = new PrismaPortfolioRepository(prisma);
+    const snapshots = new PrismaAccountSnapshotRepository(prisma);
+    const portfolios = new PrismaPortfolioRepository(prisma, snapshots);
     const first = await portfolios.findByUserId(id);
     assert.ok(first);
     assert.equal(first.account.settledCash, '1005');
     t.mock.method(PrismaAccountSnapshotRepository.prototype, 'initialize', () => assert.fail('Existing snapshots must not be initialized again'));
     t.mock.method(PrismaAccountSnapshotRepository.prototype, 'rebuild', () => assert.fail('Existing snapshots must not be rebuilt'));
-    const existingPortfolios = new PrismaPortfolioRepository(prisma);
+    const existingPortfolios = new PrismaPortfolioRepository(prisma, snapshots);
     await existingPortfolios.findByUserId(id);
     await new PrismaOrderRepository(prisma).withUserLock(id, async transaction => {
       assert.equal(present(await transaction.readSnapshot()).settledCash, '1005');

@@ -1,6 +1,6 @@
 import type { AccountSnapshot } from '../../domain/account-snapshot';
 
-/** Bound to the caller's transaction. Writes require the user lock. */
+/** Writes require the caller's transaction and user lock. */
 export interface AccountSnapshotRepository {
   /** Returns null when missing; never creates state. */
   read(userId: bigint): Promise<AccountSnapshot | null>;

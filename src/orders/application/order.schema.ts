@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { InvalidIdError, validateId } from '../../shared/domain/id-validator-helper';
 import Decimal from 'decimal.js';
 import { isCashTransfer, OrderSide } from '../../shared/domain/order-side';
 import { OrderType } from '../../shared/domain/order-type';
@@ -22,7 +23,15 @@ export function validateOrderSize(size: number): void {
 
 const common = {
   transactionId: z.string().trim().min(1).max(100),
-  instrumentId: z.union([z.string(), z.number(), z.bigint()]).pipe(z.coerce.bigint()),
+  instrumentId: z.unknown().transform((value, ctx) => {
+    try {
+      return validateId(value);
+    } catch (error) {
+      if (!(error instanceof InvalidIdError)) throw error;
+      ctx.addIssue({ code: 'custom', message: error.message });
+      return z.NEVER;
+    }
+  }),
   size: orderSizeSchema.optional(),
   amount: money.optional(),
 };

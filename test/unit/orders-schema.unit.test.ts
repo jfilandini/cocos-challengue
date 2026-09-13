@@ -8,6 +8,15 @@ import { OrderType } from '../../src/shared/domain/order-type.js';
 
 const buy = { transactionId: 'unit-order', instrumentId: 1n, side: OrderSide.BUY, type: OrderType.MARKET, size: 1 };
 
+void test('order validation rejects lossy JSON instrument IDs instead of selecting another instrument', () => {
+  const instrumentId: unknown = JSON.parse('9007199254740993');
+  assert.throws(() => validateOrder({ ...buy, instrumentId }), InvalidOrderError);
+  assert.equal(validateOrder({ ...buy, instrumentId: '9007199254740993' }).instrumentId, 9007199254740993n);
+  assert.equal(validateOrder({ ...buy, instrumentId: 1 }).instrumentId, 1n);
+  assert.throws(() => validateOrder({ ...buy, instrumentId: '9223372036854775808' }), InvalidOrderError);
+  assert.throws(() => validateOrder({ ...buy, instrumentId: undefined }), InvalidOrderError);
+});
+
 void test('schema rejects invalid prices and quantities outside the supported integer range', () => {
   for (const price of ['Infinity', 'NaN', 'abc', '', '-1', 0, null]) {
     assert.throws(() => validateOrder({ ...buy, type: OrderType.LIMIT, price }), InvalidOrderError);
