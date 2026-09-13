@@ -139,41 +139,23 @@ npm run test:instruments
 
 ## Estructura y decisiones
 
-La aplicación usa arquitectura hexagonal organizada por funcionalidad. El dominio y los casos de uso no importan NestJS, Prisma ni componentes de infraestructura.
+Arquitectura hexagonal organizada por funcionalidad. Dominio y aplicación no dependen de NestJS, Prisma ni infraestructura. `instruments` sirve como ejemplo:
 
 ```text
 src/instruments/
-  domain/instrument.ts                         Modelo independiente de Prisma
-  application/search-instruments.use-case.ts   Caso de uso y validación
-  application/ports/instrument.repository.ts   Puerto de salida
-  infrastructure/http/                        Adaptador de entrada HTTP
-  infrastructure/persistence/                 Adaptador de salida Prisma
-  instruments.module.ts                       Composición e inyección de dependencias
-
-src/account-snapshot/
-  domain/account-snapshot.ts                   Modelos y funciones puras de transición de estado
-  application/ports/account-snapshot.repository.ts Puerto de salida del repositorio
-  infrastructure/persistence/                  Adaptador Prisma y mapper de órdenes
-  account-snapshot.module.ts                           Composición e inyección de dependencias
+  domain/instrument.ts                        Modelo de dominio
+  application/search-instruments.use-case.ts   Validación y coordinación
+  application/ports/instrument.repository.ts   Contrato de persistencia
+  infrastructure/http/                        Controller y DTOs
+  infrastructure/persistence/                 Implementación con Prisma
+  instruments.module.ts                       Composición de dependencias
 ```
 
-El controlador invoca el caso de uso y convierte errores de entrada en HTTP 400. El caso de uso depende del contrato `InstrumentRepository`; el módulo NestJS lo conecta con `PrismaInstrumentRepository` mediante una fábrica. El adaptador Prisma implementa la búsqueda y el escape de patrones SQL, devolviendo modelos propios. La misma operación puede invocarse desde otro adaptador sin depender de HTTP.
+- **Entrada HTTP:** el controller delega al caso de uso y mapea el resultado al DTO de respuesta, convirtiendo IDs a strings. Los DTOs tipan la salida y documentan Swagger; Zod valida la entrada en el caso de uso. El filtro global traduce errores a HTTP.
+- **Aplicación y persistencia:** `SearchInstrumentsUseCase` depende de `InstrumentRepository`. El adaptador Prisma implementa la búsqueda y convierte los datos persistidos a modelos propios; el módulo NestJS conecta ambas partes mediante inyección de dependencias.
+- **Pruebas:** esta separación permite probar el negocio sin NestJS ni PostgreSQL y verificar los adaptadores con integración. Ver [organización de pruebas](test/README.md).
 
-`npm run test:unit` prueba los casos de uso y cálculos sin iniciar NestJS ni PostgreSQL. `npm run test:instruments` ejecuta las pruebas de búsqueda; `npm test` ejecuta toda la suite, incluyendo las funcionales con la base del challenge.
-
-La separación de pruebas por responsabilidad, los escenarios de integración y los comandos de ejecución se detallan en [`test/README.md`](test/README.md).
-
-- `src/shared/infrastructure/database`: proveedor Prisma compartido, con conexión al iniciar y desconexión al cerrar.
-- `src/shared/infrastructure/http/health.controller.ts`: consulta `SELECT 1` mediante Prisma; responde 503 si la base no está disponible. Es una comprobación de infraestructura, sin lógica de negocio.
-- `prisma/schema.prisma`: mapeo de las tablas originales y de `account_snapshots`, el estado derivado de cada cuenta.
-- `prisma.config.ts`: configuración de conexión para la CLI de Prisma.
-- `prisma/migrations/`: historial SQL versionado del esquema.
-- `docker/postgres/database.sql`: SQL original del challenge, sin modificaciones, con esquema y datos.
-- `prisma/baseline.prisma`: descripción del esquema original para verificar su adopción.
-
-PostgreSQL convierte los identificadores sin comillas a minúsculas. Los modelos usan `@map` para exponer campos como `userId` sin renombrar columnas. La cotización usa `date`, tal como aparece en el SQL.
-
-Prisma 7 utiliza el adaptador PostgreSQL y genera el cliente en `src/generated/prisma`, excluido de Git y generado durante el build. Referencia: [configuración de Prisma 7](https://www.prisma.io/docs/guides/upgrade-prisma-orm/v7).
+La infraestructura compartida gestiona la conexión Prisma y el health check. `prisma/schema.prisma` mapea las tablas existentes mediante `@map`; el cliente se genera durante el build. El SQL original se conserva en `docker/postgres/database.sql` y los cambios de esquema se versionan en `prisma/migrations/`.
 
 ### Gestión del esquema con Prisma Migrate
 
