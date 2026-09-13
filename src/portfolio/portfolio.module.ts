@@ -1,3 +1,5 @@
+import { InstrumentsModule, INSTRUMENT_REPOSITORY } from '../instruments/instruments.module';
+import type { InstrumentRepository } from '../instruments/application/ports/instrument.repository';
 import { AccountSnapshotModule } from '../account-snapshot/account-snapshot.module';
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../shared/infrastructure/database/database.module';
@@ -10,12 +12,12 @@ import { PrismaPortfolioRepository } from './infrastructure/persistence/prisma-p
 const PORTFOLIO_REPOSITORY = Symbol('PortfolioRepository');
 
 @Module({
-  imports: [AccountSnapshotModule, DatabaseModule],
+  imports: [AccountSnapshotModule, DatabaseModule, InstrumentsModule],
   controllers: [PortfolioController],
   providers: [
     { provide: PORTFOLIO_REPOSITORY, useClass: PrismaPortfolioRepository },
-    { provide: GetPortfolioUseCase, useFactory: (repository: PortfolioRepository) => new GetPortfolioUseCase(repository), inject: [PORTFOLIO_REPOSITORY] },
-    { provide: GetPortfolioByAccountNumberUseCase, useFactory: (repository: PortfolioRepository) => new GetPortfolioByAccountNumberUseCase(repository), inject: [PORTFOLIO_REPOSITORY] },
+    { provide: GetPortfolioUseCase, useFactory: (repository: PortfolioRepository, instruments: InstrumentRepository) => new GetPortfolioUseCase(repository, instruments), inject: [PORTFOLIO_REPOSITORY, INSTRUMENT_REPOSITORY] },
+    { provide: GetPortfolioByAccountNumberUseCase, useFactory: (repository: PortfolioRepository, instruments: InstrumentRepository) => new GetPortfolioByAccountNumberUseCase(repository, instruments), inject: [PORTFOLIO_REPOSITORY, INSTRUMENT_REPOSITORY] },
   ],
 })
 export class PortfolioModule {}

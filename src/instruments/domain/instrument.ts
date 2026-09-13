@@ -6,3 +6,12 @@ export interface Instrument {
   readonly name: string;
   readonly type: InstrumentType;
 }
+
+export interface InstrumentWithLatestPrice {
+  id: bigint;
+  ticker: string;
+  name: string;
+  close: string | null;
+  previousClose: string | null;
+  date: string | null;
+}

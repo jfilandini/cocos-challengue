@@ -1,8 +1,13 @@
-import type { PortfolioSnapshot } from '../../domain/portfolio';
+import type { AccountSnapshot } from '../../../account-snapshot/domain/account-snapshot';
+
+export interface PortfolioAccount {
+  userId: bigint;
+  account: AccountSnapshot;
+}
 
 export class AmbiguousPortfolioAccountError extends Error {}
 
 export interface PortfolioRepository {
-  findByUserId(userId: bigint): Promise<PortfolioSnapshot | null>;
-  findByAccountNumber(accountNumber: string): Promise<(PortfolioSnapshot & { userId: bigint }) | null>;
+  findByUserId(userId: bigint): Promise<PortfolioAccount | null>;
+  findByAccountNumber(accountNumber: string): Promise<PortfolioAccount | null>;
 }
