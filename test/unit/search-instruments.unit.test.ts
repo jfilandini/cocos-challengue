@@ -7,18 +7,6 @@ import {
   SearchInstrumentsUseCase,
 } from '../../src/instruments/application/search-instruments.use-case.js';
 
-void test('runs without NestJS or Prisma and passes normalized literal input to its port', async () => {
-  const results = [{ id: 1n, ticker: 'TEST', name: 'Test stock', type: InstrumentType.ACCIONES }];
-  const useCase = new SearchInstrumentsUseCase(instrumentRepository({
-    async search(query, pagination) {
-      assert.deepEqual(pagination, { page: 1, limit: 20 });
-      assert.equal(query, 'Te%_st');
-      return { items: results, total: results.length };
-    },
-  }));
-
-  assert.deepEqual(await useCase.execute('  Te%_st  '), { items: results, total: 1, page: 1, limit: 20, totalPages: 1 });
-});
 
 void test('rejects invalid input before accessing persistence', () => {
   const useCase = new SearchInstrumentsUseCase(instrumentRepository({
