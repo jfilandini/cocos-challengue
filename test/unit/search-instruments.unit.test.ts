@@ -1,5 +1,4 @@
 import { instrumentRepository } from '../support/ports.js';
-import { InstrumentType } from '../../src/shared/domain/instrument-type.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {

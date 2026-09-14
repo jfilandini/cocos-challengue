@@ -58,4 +58,4 @@ npm test
 npm run test:orders
 ```
 
-`npm test`, `test:e2e` y `test:orders` cargan la configuración de pruebas. `test:instruments` y `test:portfolio` conservan la configuración local de `.env`; la consulta de portfolio puede inicializar snapshots faltantes. Para ejecutar toda la suite sobre la base aislada, usar `npm test`. Las variables ya exportadas en la terminal tienen prioridad sobre los archivos de entorno.
+`npm test`, `test:e2e`, `test:orders`, `test:instruments` y `test:portfolio` cargan `.env.test.example` y permiten overrides desde `.env.test`. La consulta de portfolio puede inicializar snapshots faltantes en la base de pruebas. Para ejecutar toda la suite sobre la base aislada, usar `npm test`. Las variables ya exportadas en la terminal tienen prioridad sobre los archivos de entorno.
