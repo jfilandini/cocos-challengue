@@ -18,9 +18,9 @@ docker compose up -d --wait db
 docker compose run --build --rm api npm run db:baseline
 docker compose up --build -d --wait
 
-curl http://localhost:3001/health
+curl 'http://localhost:3001/health'
 curl 'http://localhost:3001/instruments?query=ypf'
-curl http://localhost:3001/users/1/portfolio
+curl 'http://localhost:3001/users/1/portfolio'
 ```
 
 Health debe responder `{"status":"ok","database":"up"}`. Para probar todos los endpoints, abrir [Swagger](http://localhost:3001/docs).
