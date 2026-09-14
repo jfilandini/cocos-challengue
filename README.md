@@ -182,7 +182,6 @@ Cancelar FILLED, REJECTED o CANCELLED devuelve 409. Orden inexistente o pertenec
 
 - [Swagger UI](http://localhost:3001/docs): contratos y ejecución interactiva de los endpoints.
 - [OpenAPI JSON](http://localhost:3001/docs-json): especificación de la API.
-- [REST Client](requests.http): solicitudes listas para ejecutar desde el editor.
 - [Colección de Postman](cocos-challenge.postman_collection.json): ejemplos de operaciones, idempotencia y errores. Importar el archivo desde **Import** en Postman y ajustar las variables de la colección.
 
 Los ejemplos de envío y cancelación modifican la cuenta indicada. La colección define estas variables:
