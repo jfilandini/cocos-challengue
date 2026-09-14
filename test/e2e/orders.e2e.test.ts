@@ -146,8 +146,11 @@ void describe('HTTP: order submission and cash transfers', () => {
 
   void test('missing market quote fails without saving; LIMIT uses its own price', async () => {
     const id = await user();
+    const before = await prisma.order.count({ where: { userId: id } });
     // PGR exists in the seed but has no marketdata.
     await submit(id, { ...market, instrumentId: 3 }, 503);
+    assert.equal(await prisma.order.count({ where: { userId: id } }), before);
+    assert.equal(await prisma.accountSnapshot.findUnique({ where: { userId: id } }), null);
     const limit = await submit(id, { ...market, instrumentId: 3, type: OrderType.LIMIT, price: '10.00' });
     assert.equal(limit.status, 'NEW');
   });
@@ -272,6 +275,9 @@ void describe('HTTP: concurrent resource usage', () => {
     await submit(id, { ...market, size: 1 });
     const results = await Promise.all([submit(id, { ...market, side: OrderSide.SELL, size: 1 }), submit(id, { ...market, side: OrderSide.SELL, size: 1 })]);
     assert.deepEqual(results.map(o => o.status).sort(), ['FILLED', 'REJECTED']);
+    const result = await portfolio(id);
+    assert.equal(result.availableCash, '1000.00');
+    assert.equal(result.positions.some(position => position.ticker === 'DYCA'), false);
   });
 
   void test('concurrent withdrawals and purchases share the same account lock', async () => {
@@ -363,14 +369,14 @@ void describe('HTTP: bigint identifiers and portfolio valuation', () => {
     assert.equal(result.availableCash, '920.00');
     assert.equal(result.totalValue, '1100.00');
     const stock = result.positions.find(position => position.ticker === 'RETURNS');
-  assert.ok(stock);
+    assert.ok(stock);
     assert.equal(stock.quantity, 9);
     assert.equal(stock.marketValue, '180.00');
     assert.equal(stock.totalReturnPercent, '100.00');
     assert.equal(stock.dailyReturnPercent, '25.00');
     assert.equal(stock.priceDate, '2026-01-02');
     const cash = result.positions.find(position => position.ticker === 'ARS');
-  assert.ok(cash);
+    assert.ok(cash);
     assert.equal(cash.type, 'MONEDA');
     assert.equal(cash.marketValue, '920.00');
   });
@@ -453,8 +459,15 @@ void describe('PostgreSQL integration: snapshots, reconstruction and atomicity',
     assert.equal(first.account.settledCash, '1005');
     t.mock.method(PrismaAccountSnapshotRepository.prototype, 'initialize', () => assert.fail('Existing snapshots must not be initialized again'));
     t.mock.method(PrismaAccountSnapshotRepository.prototype, 'rebuild', () => assert.fail('Existing snapshots must not be rebuilt'));
-    const existingPortfolios = new PrismaPortfolioRepository(prisma, snapshots);
-    await existingPortfolios.findByUserId(id);
+    // Prisma exposes $transaction dynamically, so intercept access rather than a property descriptor.
+    const readOnlyClient = new Proxy(prisma, {
+      get(target, property): unknown {
+        if (property === '$transaction') return () => assert.fail('Reading an existing portfolio must not start a transaction');
+        return Reflect.get(target, property);
+      },
+    });
+    const existingPortfolios = new PrismaPortfolioRepository(readOnlyClient, snapshots);
+    assert.equal(present(await existingPortfolios.findByUserId(id)).account.settledCash, '1005');
     await new PrismaOrderRepository(prisma).withUserLock(id, async transaction => {
       assert.equal(present(await transaction.readSnapshot()).settledCash, '1005');
       await transaction.save({ userId: id, instrumentId: 66n, side: OrderSide.CASH_OUT, type: OrderType.MARKET, status: OrderStatus.FILLED, size: 5, price: '1' }, randomUUID());

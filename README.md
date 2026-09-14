@@ -373,3 +373,35 @@ Incorporar un historial **append-only** de órdenes y movimientos de fondos, con
 ### 4. Normalización de Posiciones del Snapshot
 
 Si crecen las posiciones por cuenta, reemplazar el JSON por `account_snapshot_positions`, con una fila por `(user_id, instrument_id)`, cantidad, reservas, costo e indicador de inconsistencia. Permitiría actualizar una posición sin reescribir las demás y agregar restricciones de integridad. Efectivo, posiciones y órdenes deben seguir actualizándose en la misma transacción, conservando la coordinación por usuario.
+
+## Colección de Postman
+
+El repositorio incluye la colección [`cocos-challenge.postman_collection.json`](cocos-challenge.postman_collection.json) con todas las peticiones preparadas y organizadas por funcionalidad para interactuar con la API.
+
+Incluye ejemplos de:
+- **Health check:** Comprobación del servicio y conexión a la base de datos (`GET /health`).
+- **Instruments:** Búsqueda por ticker, nombre y paginación (`GET /instruments`).
+- **Portfolio:** Consulta por ID de usuario (`GET /users/:userId/portfolio`) y por número de cuenta (`GET /accounts/:accountNumber/portfolio`).
+- **Orders:** Envíos `MARKET` y `LIMIT` (por cantidad o por monto), transferencias `CASH_IN` y `CASH_OUT`, y cancelación de órdenes en estado `NEW` (`POST /users/:userId/orders/:orderId/cancel`).
+- **Casos borde y errores:** Validaciones de idempotencia (`transactionId`), fondos insuficientes (`REJECTED`), errores de formato (400) y recursos inexistentes (404).
+
+### Cómo importarla en Postman
+
+1. Abrir la aplicación **Postman**.
+2. En la esquina superior izquierda del panel de navegación, hacer clic en el botón **Import** (o usar el atajo `Ctrl+O` en Windows/Linux o `Cmd+O` en macOS).
+3. Seleccionar la pestaña **File** y arrastrar el archivo `cocos-challenge.postman_collection.json` ubicado en la raíz del proyecto (o hacer clic en **files** para buscarlo y seleccionarlo).
+4. Hacer clic en **Import** para confirmar. La colección **Cocos Challenge - Trading API** aparecerá en la barra lateral izquierda.
+
+### Variables de Entorno y Colección
+
+La colección define variables predeterminadas (visibles en la pestaña **Variables** al seleccionar la colección):
+
+| Variable | Valor por defecto | Descripción |
+| --- | --- | --- |
+| `baseUrl` | `http://localhost:3001` | URL base de la API. Ajustar al puerto en uso si se ejecuta en `http://localhost:3000` (según `API_PORT` en `.env`). |
+| `userId` | `1` | ID de usuario para pruebas con datos precargados. |
+| `accountNumber` | `10001` | Número de cuenta asociado al usuario 1. |
+| `instrumentId` | `50` | ID del instrumento para órdenes de acciones (`YPFD`). |
+| `arsInstrumentId` | `66` | ID del instrumento para movimientos en pesos (`ARS`). |
+| `lastCreatedOrderId` | *(dinámico)* | ID de la última orden creada para probar el endpoint de cancelación. |
+

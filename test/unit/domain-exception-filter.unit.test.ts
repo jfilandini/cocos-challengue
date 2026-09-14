@@ -53,8 +53,8 @@ const errorMappings: Array<[number, string, Array<new (message?: string) => Erro
   [503, 'Service Unavailable', [OrderPriceUnavailableError, PortfolioPriceUnavailableError]],
 ];
 
-for (const [status, label, errors] of errorMappings) {
-  void test(`DomainExceptionFilter maps application and domain errors to ${status}`, () => {
+void test('DomainExceptionFilter maps known errors to their HTTP status and response contract', () => {
+  for (const [status, label, errors] of errorMappings) {
     for (const ErrorType of errors) {
       const mock = createMockHost();
       const message = `Failure: ${ErrorType.name}`;
@@ -64,16 +64,16 @@ for (const [status, label, errors] of errorMappings) {
         responseBody: { statusCode: status, error: label, message },
       }, ErrorType.name);
     }
-  });
-}
+  }
+});
 
 void test('DomainExceptionFilter forwards existing HttpException without modification', () => {
   const filter = new DomainExceptionFilter();
   const mock = createMockHost();
-  const customHttp = new BadRequestException('Validation failed');
+  const customHttp = new BadRequestException(['Invalid amount', 'Invalid instrument']);
   filter.catch(customHttp, mock.host);
   assert.equal(mock.result.statusCode, 400);
-  assert.equal(errorResponse.parse(mock.result.responseBody).message, 'Validation failed');
+  assert.deepEqual(errorResponse.parse(mock.result.responseBody).message, ['Invalid amount', 'Invalid instrument']);
 });
 
 void test('DomainExceptionFilter hides unknown errors and responds with 500', () => {

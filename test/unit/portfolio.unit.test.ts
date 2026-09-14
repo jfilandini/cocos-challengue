@@ -57,14 +57,7 @@ void test('missing latest price fails explicitly; missing previous close only re
   }
 });
 
-void test('decimal amounts do not accumulate binary floating-point errors', () => {
-  const result = portfolio([movement(OrderSide.CASH_IN, 1), movement(OrderSide.BUY, 3, '0.10')], [{ ...instrument, close: '0.20' }]);
-  assert.equal(result.cashBalance, '0.70');
-  assert.equal(result.totalValue, '1.30');
-  assert.equal(present(result.positions.find(p => p.ticker === 'TEST')).totalReturnPercent, '100.00');
-});
-
-void test('cash-only and fractional cash positions reconcile with total value without double counting', () => {
+void test('cash positions and decimal trades preserve precision, reserves and total valuation', () => {
   const cashOnly = portfolio([movement(OrderSide.CASH_IN, 100)], []);
   assert.equal(cashOnly.positions.length, 1);
   assert.equal(cashOnly.positions[0].marketValue, cashOnly.totalValue);
@@ -79,5 +72,7 @@ void test('cash-only and fractional cash positions reconcile with total value wi
   assert.equal(cash.reservedQuantity, '0.20');
   assert.equal(cash.availableQuantity, '0.50');
   assert.equal(cash.marketValue, '0.70');
+  assert.equal(result.cashBalance, '0.70');
   assert.equal(result.totalValue, '1.30');
+  assert.equal(present(result.positions.find(p => p.ticker === 'TEST')).totalReturnPercent, '100.00');
 });

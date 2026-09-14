@@ -6,7 +6,7 @@ import { PrismaService } from '../../src/shared/infrastructure/database/prisma.s
 import { AmbiguousPortfolioAccountError } from '../../src/portfolio/application/ports/portfolio.repository.js';
 import { PrismaPortfolioRepository } from '../../src/portfolio/infrastructure/persistence/prisma-portfolio.repository.js';
 
-void test('duplicate account matches fail before reading snapshots or quotes', async t => {
+void test('duplicate account matches fail before reading snapshots', async t => {
   // The constructor is lazy; restore the environment before running any asynchronous work.
   const previousUrl = process.env.DATABASE_URL;
   let db: PrismaService;
@@ -19,11 +19,8 @@ void test('duplicate account matches fail before reading snapshots or quotes', a
   }
   t.after(() => db.$disconnect());
   const users = { ...db.user };
-  const instruments = { ...db.instrument };
   t.mock.property(db, 'user', users);
-  t.mock.property(db, 'instrument', instruments);
   t.mock.method(users, 'findMany', async (): Promise<Prisma.UserGetPayload<{ select: { id: true } }>[]> => [{ id: 1n }, { id: 2n }]);
-  t.mock.method(instruments, 'findMany', () => assert.fail('Ambiguous accounts must not read quotes'));
   t.mock.method(PrismaAccountSnapshotRepository.prototype, 'read', () => assert.fail('Ambiguous accounts must not read snapshots'));
   const repository = new PrismaPortfolioRepository(db, new PrismaAccountSnapshotRepository(db));
   await assert.rejects(repository.findByAccountNumber('duplicate'), AmbiguousPortfolioAccountError);

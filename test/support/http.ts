@@ -13,7 +13,7 @@ export const orderResponse = z.strictObject({
 export const cancellationResponse = z.strictObject({
   id: z.string(), userId: z.string(), status: z.literal(OrderStatus.CANCELLED),
 });
-export const errorResponse = z.object({ statusCode: z.number(), message: z.string(), error: z.string() });
+export const errorResponse = z.object({ statusCode: z.number(), message: z.union([z.string(), z.array(z.string())]), error: z.string() });
 export const instrumentPage = z.strictObject({
   items: z.array(z.strictObject({ id: z.string(), ticker: z.string(), name: z.string(), type: z.enum(InstrumentType) })),
   total: z.number(), page: z.number(), limit: z.number(), totalPages: z.number(),
