@@ -5,35 +5,36 @@ API para buscar instrumentos financieros, consultar portfolios, enviar y cancela
 
 ## Ejecutar con Docker
 
-Requisitos: Docker Desktop encendido (o Docker Engine con Compose).
+Requisitos: Git y Docker con Compose en ejecución.
+
+La base original del challenge se carga en un contenedor PostgreSQL separado de la aplicación. La app aplica sus cambios mediante migraciones sobre esa base existente, reproduciendo un flujo de despliegue sobre una base previamente provisionada.
 
 ```sh
+git clone https://github.com/jfilandini/cocos-challengue.git
+cd cocos-challengue
 cp .env.example .env
+
 docker compose up -d --wait db
-# Solo la primera vez, sobre la base original sin migraciones:
+# Si es la primera vez que descargás el proyecto y levantás la base del contenedor,
+# ejecutá el baseline para registrar el esquema original antes de aplicar las migraciones de Prisma.
+# Omitir este paso si esta base ya tiene el baseline registrado.
 docker compose run --build --rm api npm run db:baseline
 docker compose up --build -d --wait
+
 curl http://localhost:3000/health
+curl 'http://localhost:3000/instruments?query=ypf'
+curl http://localhost:3000/users/1/portfolio
 ```
 
-Respuesta esperada: `{"status":"ok","database":"up"}`.
+Health debe responder `{"status":"ok","database":"up"}`. Para probar todos los endpoints, abrir [Swagger](http://localhost:3000/docs).
 
-Si el puerto 3000 está ocupado, cambiar `API_PORT` en `.env` (por ejemplo, a 3001) y usar ese puerto en la URL. `PORT` configura el arranque local de Node; dentro del contenedor siempre se usa 3000.
+Si el puerto 3000 está ocupado, cambiar `API_PORT` en `.env` y ajustar las URLs.
 
-- `api`: compila y ejecuta la aplicación en el puerto 3000; espera a que PostgreSQL esté disponible.
-- `db`: PostgreSQL en el puerto 5432, con volumen persistente `postgres_data`.
-- Dentro de Compose la API se conecta a `db:5432`; desde la computadora, Prisma usa `localhost:5432`.
-- Los puertos se publican solamente en localhost. Las credenciales de ejemplo son para desarrollo local.
+Para detener el proyecto conservando los datos:
 
 ```sh
-docker compose logs -f api
-docker compose ps
 docker compose down
 ```
-
-`down` conserva los datos. Docker ejecuta el SQL original de `docker/postgres/database.sql` solo cuando el volumen está vacío. El baseline se registra una sola vez con el comando indicado arriba. Al arrancar, la API ejecuta `prisma migrate deploy` y aplica únicamente las migraciones pendientes antes de iniciar NestJS. No vuelve a cargar el dataset en bases existentes.
-
-Después de cambiar el código, ejecutar nuevamente `docker compose up --build -d --wait`.
 
 ## Desarrollo local
 
@@ -129,7 +130,7 @@ La búsqueda es **paginada**:
 | `page` | Página solicitada, entero positivo; por defecto `1`. |
 | `limit` | Resultados por página, entero entre `1` y `100`; por defecto `20`. |
 
-Las pruebas funcionales de instrumentos usan la base migrada con el dataset del challenge y no modifican datos:
+Pruebas de instrumentos:
 
 ```sh
 docker compose up -d db --wait
@@ -174,19 +175,6 @@ Las columnas originales conservan su nulabilidad en PostgreSQL. Los campos reque
 
 Para cambios futuros, editar `schema.prisma`, generar la migración con `npm run db:migrate:dev -- --create-only --name nombre_del_cambio` y revisar el SQL antes de aplicarlo. Prisma puede volver a proponer `SET NOT NULL` por esa diferencia intencional: retirarlos para conservar esta decisión, aplicar con `npm run db:migrate` y versionar el SQL junto con el esquema. En despliegues usar `npm run db:migrate`. `prisma generate` solo genera el cliente; no modifica la base.
 
-#### Bases existentes modificadas manualmente
-
-Una base con el SQL original debe ejecutar una vez `npm run db:baseline`; luego puede iniciar la app normalmente. Si ya recibió los cambios de la aplicación sin historial Prisma, hacer un backup, revisar las diferencias con `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script` y alinearla con el esquema final sin borrar datos. Solo después de comprobar que los cambios de ambas migraciones están presentes, registrar ambas como aplicadas. La comparación con Prisma mostrará los `SET NOT NULL` omitidos intencionalmente; no aplicarlos:
-
-```sh
-npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script
-npx prisma migrate resolve --applied 0_challenge_base
-npx prisma migrate resolve --applied 20260911010000_application_schema
-npm run db:migrate
-```
-
-No registrar una migración como aplicada si sus cambios no están presentes. La diferencia intencional de nulabilidad no debe confundirse con cambios pendientes. La aplicación presupone valores presentes en los campos requeridos de Prisma; esa definición no impide por sí sola insertar NULL mediante SQL. No se requiere borrar el volumen.
-
 El dataset conserva la inconsistencia conocida del usuario 1: BMA tiene una compra ejecutada de 20 acciones y una venta ejecutada de 30. El tratamiento se documenta en la sección Portfolio.
 
 La prueba funcional de envío de órdenes está en `test/e2e/orders.e2e.test.ts` y usa una base de pruebas aislada.
@@ -211,7 +199,7 @@ El puerto debe coincidir con `API_PORT`. La respuesta incluye `totalValue`, `cas
 - `totalReturnPercent` es el rendimiento no realizado de la posición abierta: `(valor de mercado − costo remanente) / costo remanente × 100`. Las compras suman costo; las ventas descuentan cantidad al costo promedio vigente, sin usar el precio de venta como costo. Una posición cerrada se omite y al reabrirse inicia un nuevo costo. No incluye ganancias realizadas, comisiones ni impuestos.
 - `dailyReturnPercent = (close − previousClose) / previousClose × 100`; devuelve `null` si falta el cierre anterior o no es mayor que cero.
 - Sin cotización válida para una posición abierta se responde HTTP 503, evitando devolver una valuación incompleta. Movimientos relevantes incompletos o inválidos producen HTTP 422. Usuario inexistente devuelve 404 e identificador inválido devuelve 400.
-- **Lectura no bloqueante (*Lock-free Read*):** El portfolio lee el snapshot existente y las cotizaciones mediante consultas directas sin bloqueos pesimistas ni transacciones de escritura, aprovechando el aislamiento MVCC de PostgreSQL. Esto garantiza que las consultas de portfolio nunca bloqueen ni sean bloqueadas por el envío concurrente de órdenes, y que múltiples lecturas corran en paralelo.
+- **Lectura del portfolio:** Si el snapshot existe, se consulta junto con las cotizaciones mediante lecturas sin `FOR UPDATE` ni transacciones de escritura.
 - **Inicialización diferida (*Lazy fallback*):** Únicamente en caso de que el snapshot aún no exista en la base de datos (`null`), se adquiere un bloqueo pesimista `SELECT ... FOR UPDATE` sobre la fila del usuario para reconstruirlo a partir del historial de órdenes y guardarlo de forma atómica y consistente por primera vez.
 
 El usuario 1 del SQL original tiene `cashBalance = "753000.00"`, `reservedCash = "125500.00"`, `availableCash = "627500.00"` y `totalValue = "889756.00"`. Incluye BMA con −10 acciones: se conserva el saldo firmado y su valor de mercado negativo, con `inconsistentHistory: true` y `totalReturnPercent: null`. El total refleja literalmente ese historial inconsistente. Los usuarios 2, 3 y 4 tienen valores cero y posiciones vacías.
@@ -356,10 +344,10 @@ Las pruebas funcionales usan PostgreSQL aislado y verifican persistencia, portfo
 
 Para evitar recorrer y recalcular el historial de órdenes del usuario en cada consulta de portfolio o validación de recursos, una vez inicializado el snapshot:
 
-- **Registro de órdenes como fuente de verdad (`orders`):** Conserva las órdenes y su estado actual (`FILLED`, `NEW`, `REJECTED`, `CANCELLED`). Las cancelaciones actualizan el estado de las órdenes pendientes; no se conserva un historial inmutable de eventos ni la fecha de cada transición. Las órdenes ejecutadas no se modifican desde la API.
+- **Registro de órdenes como fuente de verdad (`orders`):** Conserva las órdenes y su estado actual (`FILLED`, `NEW`, `REJECTED`, `CANCELLED`). Las cancelaciones actualizan el estado de las órdenes pendientes. Las órdenes ejecutadas no se modifican desde la API.
 - **Snapshot de estado (`account_snapshots`):** Almacena una proyección consolidada por usuario con su saldo contable (`settledcash`), pesos reservados por compras pendientes (`reservedcash`) y sus posiciones vigentes. Se gestiona desde su propio módulo [`src/account-snapshot/`](src/account-snapshot).
 - **Actualización transaccional incremental (Escritura con bloqueo pesimista):** Las órdenes ejecutadas modifican saldos y posiciones, las pendientes reservan recursos y las cancelaciones liberan reservas, dentro de la misma transacción ACID que persiste la orden o su cambio de estado. Utiliza `SELECT ... FOR UPDATE` sobre el usuario para serializar la validación de fondos y evitar condiciones de carrera (*lost updates*). Las órdenes rechazadas no alteran esos recursos.
-- **Lectura desacoplada y no bloqueante (*Lock-free Read*):** Las consultas de portfolio leen la proyección materializada directamente sin abrir transacciones de bloqueo pesimista (`FOR UPDATE`), permitiendo lecturas concurrentes y maximizando el throughput sin interferir con los envíos de órdenes.
+- **Lectura e inicialización:** Si el snapshot existe, el portfolio lo lee sin bloqueo pesimista. Si falta, abre una transacción y bloquea la fila del usuario con `FOR UPDATE`; vuelve a comprobar su existencia y, si sigue faltando, lo reconstruye y guarda. Esta inicialización comparte el bloqueo por usuario con las órdenes y puede esperar o hacerlas esperar.
 - **Costo de las operaciones habituales:** El snapshot evita reproducir el historial de órdenes en cada consulta o validación. El trabajo sigue dependiendo de las posiciones y cotizaciones involucradas: se recorren y ordenan posiciones, y sus datos se leen y persisten como JSON.
 - **Reconstrucción:** Si falta el snapshot, se inicializa automáticamente bajo bloqueo seguro desde las órdenes del usuario. Ante modificaciones manuales o mantenimiento, el estado actual puede regenerarse mediante `npm run snapshots:rebuild`, que vuelve a procesar el historial. Esto no permite reconstruir las reservas a una fecha pasada, porque no se conservan todas las transiciones de estado.
 
@@ -385,4 +373,3 @@ Incorporar un historial **append-only** de órdenes y movimientos de fondos, con
 ### 4. Normalización de Posiciones del Snapshot
 
 Si crecen las posiciones por cuenta, reemplazar el JSON por `account_snapshot_positions`, con una fila por `(user_id, instrument_id)`, cantidad, reservas, costo e indicador de inconsistencia. Permitiría actualizar una posición sin reescribir las demás y agregar restricciones de integridad. Efectivo, posiciones y órdenes deben seguir actualizándose en la misma transacción, conservando la coordinación por usuario.
-
